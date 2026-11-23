@@ -1,0 +1,29 @@
+{
+  "name": "knowpilot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "KnowPilot —— 知识协作智能体",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "migrate": "npm run migrate -w @knowpilot/server",
+    "smoke": "npm run smoke -w @knowpilot/server",
+    "dev:server": "npm run dev -w @knowpilot/server",
+    "dev:web": "npm run dev -w @knowpilot/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "//overrides": "sharp 必须只有一份：OCR 包（@gutenye/ocr-node）要 ^0.34.3，而 @huggingface/transformers 要 ^0.35.4，两个范围不相交，npm 只能在 OCR 包下再装一份。两份 sharp = 两份 libvips 原生库，而 libvips 靠 GObject 的类型系统注册属性 —— 同一个进程里加载两份，先加载的那份的类型注册会被后加载的破坏，于是 OCR 每页都抛 colourspace: parameter space not set。服务端必然同时加载两者（向量化用 transformers），所以这个坑在真实服务里是必现的；只在「没 import transformers」的冒烟脚本里看不到。这里强制统一到 0.35.x。",
+  "overrides": {
+    "sharp": "^0.35.5"
+  }
+}

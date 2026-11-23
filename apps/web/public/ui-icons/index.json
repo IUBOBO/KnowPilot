@@ -1,0 +1,66 @@
+{
+  "navigation": [
+    "home",
+    "ask",
+    "search",
+    "docs",
+    "experience",
+    "sop",
+    "history",
+    "submissions",
+    "journals",
+    "datasets",
+    "upload",
+    "organize",
+    "rules",
+    "capture",
+    "admin",
+    "users",
+    "usage",
+    "patrol",
+    "config",
+    "feedback",
+    "trace"
+  ],
+  "actions": [
+    "add",
+    "edit",
+    "delete",
+    "search",
+    "filter",
+    "sort",
+    "refresh",
+    "upload",
+    "download",
+    "external",
+    "close",
+    "more",
+    "chevron",
+    "copy",
+    "stop",
+    "retry"
+  ],
+  "statuses": [
+    "ready",
+    "processing",
+    "failed",
+    "warning",
+    "overdue",
+    "draft",
+    "conflict",
+    "approved",
+    "denied"
+  ],
+  "files": [
+    "pdf",
+    "docx",
+    "md",
+    "txt"
+  ],
+  "empty": [
+    "no-documents",
+    "no-results",
+    "all-clear",
+    "no-access"
+  ]
+}

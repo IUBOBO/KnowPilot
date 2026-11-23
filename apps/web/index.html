@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KnowPilot · 研究知识协作</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      主题必须在首屏渲染之前定下来。
+      交给 src/theme.ts 的话，要等 JS bundle 下载执行完才设属性，
+      用户会先看到一帧亮色再跳成暗色（暗色用户尤其刺眼）。
+      这段必须是同步内联脚本，不能用 defer/module。
+
+      逻辑与 theme.ts 的 currentTheme() 保持一致：
+      显式选过就用选的，没选过跟随系统。
+      localStorage 在隐私模式下会抛异常，所以整段包 try。
+    -->
+    <script>
+      (function () {
+        var KEY = 'knowpilot.theme.v1';
+        var stored = null;
+        try {
+          stored = localStorage.getItem(KEY);
+        } catch (e) {
+          stored = null;
+        }
+        if (stored !== 'light' && stored !== 'dark') {
+          stored = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.dataset.theme = stored;
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

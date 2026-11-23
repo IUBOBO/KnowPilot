@@ -1,0 +1,97 @@
+{
+  "meta": {
+    "dataset": "虚构期刊分区测试数据",
+    "filter": "覆盖大类、小类、JCR 和缺失 JCR",
+    "source": "Synthetic test fixture",
+    "sourceUrl": "https://example.com/",
+    "year": 2025,
+    "jcrMissing": 1,
+    "generatedAt": "2026-01-01"
+  },
+  "journals": [
+    {
+      "name": "Example Journal of Remote Sensing",
+      "issn": null,
+      "field": "地球科学",
+      "rankings": [
+        {
+          "system": "中科院",
+          "category": "地球科学",
+          "rank": "3区",
+          "top": false,
+          "note": null
+        },
+        {
+          "system": "中科院",
+          "category": "遥感",
+          "rank": "4区",
+          "top": false,
+          "note": null
+        }
+      ]
+    },
+    {
+      "name": "Example Computer Science Review",
+      "issn": "1234-5679",
+      "field": "计算机科学",
+      "rankings": [
+        {
+          "system": "中科院",
+          "category": "计算机科学",
+          "rank": "1区",
+          "top": true,
+          "note": "排名 1/20"
+        },
+        {
+          "system": "JCR",
+          "category": "Computer Science",
+          "rank": "Q1",
+          "top": false,
+          "note": "IF 3.0"
+        }
+      ]
+    },
+    {
+      "name": "Example Computing Surveys",
+      "issn": null,
+      "field": "计算机科学",
+      "rankings": [
+        {
+          "system": "JCR",
+          "category": "Computer Science",
+          "rank": "Q2",
+          "top": false,
+          "note": null
+        }
+      ]
+    },
+    {
+      "name": "Example Engineering Review",
+      "issn": null,
+      "field": "工程",
+      "rankings": [
+        {
+          "system": "JCR",
+          "category": "Engineering",
+          "rank": "Q3",
+          "top": false,
+          "note": null
+        }
+      ]
+    },
+    {
+      "name": "Example Methods Letters",
+      "issn": null,
+      "field": "方法",
+      "rankings": [
+        {
+          "system": "JCR",
+          "category": "Methods",
+          "rank": "Q4",
+          "top": false,
+          "note": null
+        }
+      ]
+    }
+  ]
+}
