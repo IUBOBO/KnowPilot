@@ -28,6 +28,8 @@ import {
 } from './corpus.ts';
 import type { GcCase, GcCheck } from './types.ts';
 
+export const GC10_REQUEST_ID = 'gc-10-eval';
+
 /**
  * 03 号 §3 的十六条原始用例。
  *
@@ -206,8 +208,9 @@ const GC_SIXTEEN: readonly GcCase[] = [
     regression: true,
     scenario: '用户 A（成员）可以查看用户 B 的投稿，但不能修改 B 的投稿状态。',
     checks: [
-      { k: 'http-status-is', scorer: 'deterministic', title: '服务层拦截（403 或 404）', status: 404 },
-      { k: 'no-content-leak', scorer: 'deterministic', title: '越权写入的响应不附带投稿正文', needle: TITLE_SUBMISSION_B },
+      { k: 'http-status-is', scorer: 'deterministic', title: '服务层拦截（403 或 404）', status: [403, 404] },
+      { k: 'submission-denial-body', scorer: 'deterministic', title: '拒绝响应只含通用错误，不包含投稿内容', requestId: GC10_REQUEST_ID },
+      { k: 'submission-unchanged', scorer: 'deterministic', title: '数据库中的投稿状态、版本和状态历史不变' },
     ],
   },
   {

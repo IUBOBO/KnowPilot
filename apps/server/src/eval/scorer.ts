@@ -14,7 +14,8 @@
  *   · human         —— 恒 NOT_RUN（03 号 §3.1 的第三类：初期人工抽检）。它**不计入**
  *                      完整性判定 —— 人工复核天然是欠着的，不该让每条用例永远 INCOMPLETE。
  */
-import type { Answer } from '@knowpilot/shared';
+import { isDeepStrictEqual } from 'node:util';
+import type { Answer, ApiErrorBody } from '@knowpilot/shared';
 import { FABRICATED_EVIDENCE_MARK } from '../agent/citations.ts';
 import { NO_EVIDENCE_PHRASE } from '../agent/prompt.ts';
 import type { CaseResult, CheckOutcome, GcCase, GcCheck, GcObservation, Verdict } from './types.ts';
@@ -55,7 +56,30 @@ export function evaluateCheck(check: GcCheck, obs: GcObservation): CheckOutcome 
   }
   if (check.k === 'http-status-is') {
     if (obs.http === undefined) return out('NOT_RUN', '未提供 HTTP 响应');
-    return out(obs.http.status === check.status ? 'PASS' : 'FAIL', `实际状态码 ${obs.http.status}，期望 ${check.status}`);
+    const expected = typeof check.status === 'number' ? [check.status] : check.status;
+    return out(expected.includes(obs.http.status) ? 'PASS' : 'FAIL', `实际状态码 ${obs.http.status}，期望 ${expected.join(' 或 ')}`);
+  }
+  if (check.k === 'submission-denial-body') {
+    if (obs.http === undefined) return out('NOT_RUN', '未提供 HTTP 响应');
+    const { status, body } = obs.http;
+    if (status !== 403 && status !== 404) return out('FAIL', '未收到投稿写入拒绝响应');
+    // 按原始响应校验通用错误体，避免 JSON 解析覆盖重复字段而漏检。
+    const error = status === 403
+      ? { code: 'permission_denied', title: '无权限', message: '只能编辑自己录入的投稿。' } as const
+      : { code: 'not_found', title: '未找到', message: '没有这条投稿记录。' } as const;
+    const expected: ApiErrorBody = { error: { ...error, retryable: false, requestId: check.requestId } };
+    return body === JSON.stringify(expected) ? out('PASS') : out('FAIL', '拒绝响应超出允许的通用错误体');
+  }
+  if (check.k === 'submission-unchanged') {
+    if (obs.submissionWrite === undefined) return out('NOT_RUN', '未提供数据库前后快照');
+    const { before, after } = obs.submissionWrite;
+    if (before === null || after === null) return out('FAIL', '请求前或请求后缺少目标投稿');
+    const changed: string[] = [];
+    if (before.status !== after.status || before.statusSince !== after.statusSince ||
+        before.updatedAt !== after.updatedAt || !isDeepStrictEqual(before.rounds, after.rounds)) changed.push('状态或轮次');
+    if (before.revision !== after.revision) changed.push('版本');
+    if (!isDeepStrictEqual(before.history, after.history)) changed.push('状态历史');
+    return changed.length === 0 ? out('PASS') : out('FAIL', `数据库存在改动：${changed.join('、')}`);
   }
   if (check.k === 'http-body-includes') {
     if (obs.http === undefined) return out('NOT_RUN', '未提供 HTTP 响应');
