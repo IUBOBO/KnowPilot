@@ -16,8 +16,8 @@
   },
   "planning": {
     "branch": "docs/v2-unified-plan",
-    "status": "awaiting_merge",
-    "merge_sha": null,
+    "status": "merged",
+    "merge_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
     "issue_sync_verification": {
       "status": "verified",
       "open_issues": [
@@ -36,10 +36,12 @@
         13
       ],
       "preserved_acceptance_checks": 53,
-      "plan_revision_sha": "641d590d02f29961130e8fa5f6de871e392b028a"
+      "plan_revision_sha": "641d590d02f29961130e8fa5f6de871e392b028a",
+      "issue_13_plan_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51"
     },
     "pr": 15,
-    "document_sha": "641d590d02f29961130e8fa5f6de871e392b028a"
+    "document_sha": "641d590d02f29961130e8fa5f6de871e392b028a",
+    "reviewed_head": "569066eec5776ab6b8d98e8d8bcfa35828372e13"
   },
   "stages": [
     {
@@ -48,14 +50,18 @@
       "report": "docs/plans/v2/gates/G0.md",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
+        "status": "blocked",
         "reviewer": null,
-        "evidence": []
+        "evidence": [
+          "docs/plans/v2/gates/G0.md"
+        ],
+        "reason": "GC-10 returned a permission denial (403); the shipped assertion expects 404 and failed twice. No G0 release authorized.",
+        "model_checks": "not_run"
       },
       "blockers": [
-        "planning.merged-and-synced",
         "13-A.accepted"
-      ]
+      ],
+      "baseline_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51"
     },
     {
       "id": "G1",
@@ -136,7 +142,13 @@
         "evidence": [],
         "reviewer": null
       },
-      "release_node": "1.released"
+      "release_node": "1.released",
+      "preparation": {
+        "plan_checked_at": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
+        "proposed_branch": "feat/v2-01-retrieval-contract",
+        "proposed_worktree_alias": "KnowPilot-V2-01",
+        "release_gate": "G0.pass"
+      }
     },
     {
       "issue": 2,
@@ -155,7 +167,13 @@
         "evidence": [],
         "reviewer": null
       },
-      "release_node": "2.released"
+      "release_node": "2.released",
+      "preparation": {
+        "plan_checked_at": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
+        "proposed_branch": "feat/v2-02-ask-shell",
+        "proposed_worktree_alias": "KnowPilot-V2-02",
+        "release_gate": "G0.pass"
+      }
     },
     {
       "issue": 3,
@@ -352,23 +370,33 @@
       "stable_id": "V2-13",
       "state": "blocked",
       "owner_role": "Quality/eval",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
+      "owner": "coordinator",
+      "branch": "eval/v2-g0-evidence",
+      "worktree_alias": "KnowPilot-V2-G0",
+      "completed_nodes": [
+        "13-A.run"
+      ],
       "prs": [],
-      "head_sha": null,
+      "head_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
+        "status": "blocked",
+        "evidence": [
+          "docs/plans/v2/gates/G0.md",
+          "docs/plans/v2/V2-13.md"
+        ],
         "reviewer": null
       },
       "release_node": "G5.pass",
       "phases": {
         "13-A": {
           "state": "blocked",
-          "acceptance": "not_run"
+          "acceptance": "blocked",
+          "tested_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
+          "offline_report_sha256": "34af5c053500e702c5527fd4c88a9d09b8240ad4c4a313f8c1be7c679ddd2064",
+          "fixture": "5d4ca679bfc6",
+          "blocker": "GC-10",
+          "official_model_mode": "not_run"
         },
         "13-B": {
           "state": "planned",
