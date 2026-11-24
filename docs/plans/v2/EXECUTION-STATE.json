@@ -46,16 +46,16 @@
   "stages": [
     {
       "id": "G0",
-      "status": "blocked",
+      "status": "awaiting_review",
       "report": "docs/plans/v2/gates/G0.md",
       "merge_sha": null,
       "acceptance": {
-        "status": "blocked",
+        "status": "pending",
         "reviewer": null,
         "evidence": [
           "docs/plans/v2/gates/G0.md"
         ],
-        "reason": "GC-10 returned a permission denial (403); the shipped assertion expects 404 and failed twice. No G0 release authorized.",
+        "reason": "GC-10 and GC-12 passed offline after the approved evaluator correction. PR #16 requires human merge approval, post-merge regression, and user sign-off before G0 release.",
         "model_checks": "not_run"
       },
       "blockers": [
@@ -368,7 +368,7 @@
     {
       "issue": 13,
       "stable_id": "V2-13",
-      "state": "blocked",
+      "state": "awaiting_review",
       "owner_role": "Quality/eval",
       "owner": "coordinator",
       "branch": "eval/v2-g0-evidence",
@@ -376,11 +376,14 @@
       "completed_nodes": [
         "13-A.run"
       ],
-      "prs": [],
-      "head_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
+      "prs": [
+        16
+      ],
+      "head_sha": "d400d93d2821e68a0843b0595688d3d7f186bb76",
+      "head_sha_scope": "tested_evaluation_code_commit",
       "merge_sha": null,
       "acceptance": {
-        "status": "blocked",
+        "status": "pending",
         "evidence": [
           "docs/plans/v2/gates/G0.md",
           "docs/plans/v2/V2-13.md"
@@ -390,13 +393,35 @@
       "release_node": "G5.pass",
       "phases": {
         "13-A": {
-          "state": "blocked",
-          "acceptance": "blocked",
-          "tested_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
-          "offline_report_sha256": "34af5c053500e702c5527fd4c88a9d09b8240ad4c4a313f8c1be7c679ddd2064",
+          "state": "awaiting_review",
+          "acceptance": "pending",
+          "tested_sha": "d400d93d2821e68a0843b0595688d3d7f186bb76",
+          "offline_report_sha256": "c2008948503cc7770c881dbf1df560242e180556c3340ba4ed02570e93081d55",
           "fixture": "5d4ca679bfc6",
-          "blocker": "GC-10",
-          "official_model_mode": "not_run"
+          "official_model_mode": "not_run",
+          "baseline_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
+          "baseline_offline_report_sha256": "34af5c053500e702c5527fd4c88a9d09b8240ad4c4a313f8c1be7c679ddd2064",
+          "targeted_report_sha256": "aa59f3eab8acbb6628e643678f0337c57dada4c81fff519abace87d01cdf5cea",
+          "initial_failure": {
+            "case": "GC-10",
+            "runs": 2,
+            "expected_status": 404,
+            "observed_status": 403
+          },
+          "offline_acceptance_scope": "passed",
+          "offline_blockers": {
+            "passed": [
+              "GC-10",
+              "GC-12"
+            ],
+            "failed": [],
+            "not_run": [
+              "GC-08",
+              "GC-09"
+            ],
+            "not_run_checks": 5
+          },
+          "post_merge_regression": "pending"
         },
         "13-B": {
           "state": "planned",
