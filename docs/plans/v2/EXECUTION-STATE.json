@@ -46,34 +46,40 @@
   "stages": [
     {
       "id": "G0",
-      "status": "awaiting_review",
+      "status": "passed",
       "report": "docs/plans/v2/gates/G0.md",
-      "merge_sha": null,
+      "merge_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
       "acceptance": {
-        "status": "pending",
-        "reviewer": null,
+        "status": "passed",
+        "reviewer": "user",
         "evidence": [
           "docs/plans/v2/gates/G0.md"
         ],
-        "reason": "GC-10 and GC-12 passed offline after the approved evaluator correction. PR #16 requires human merge approval, post-merge regression, and user sign-off before G0 release.",
-        "model_checks": "not_run"
+        "reason": "User approved G0 offline acceptance conditional on post-merge regression; all deterministic checks passed on the verified merge SHA.",
+        "model_checks": "not_run",
+        "post_merge_report_hashes": {
+          "targeted.json": "015c6051f4aa84bf25d82b588e6805bf1cf26047c0bfb0b2ba727371c44dbe51",
+          "blockers.json": "af210c582f89fd021bf7a8a835688570205f4ac403f09bff7989d9d67cbac324",
+          "commands.json": "9eb1fd525df10b0ac92348bcb9675b42bc9df95826893e2c38a12fa6af5ec25a"
+        }
       },
-      "blockers": [
-        "13-A.accepted"
-      ],
+      "blockers": [],
       "baseline_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51"
     },
     {
       "id": "G1",
-      "status": "planned",
+      "status": "in_progress",
       "report": "docs/plans/v2/gates/G1.md",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
+        "status": "pending",
         "reviewer": null,
         "evidence": []
       },
-      "blockers": []
+      "blockers": [
+        "1.released",
+        "2.released"
+      ]
     },
     {
       "id": "G2",
@@ -128,14 +134,14 @@
     {
       "issue": 1,
       "stable_id": "V2-01",
-      "state": "blocked",
+      "state": "in_progress",
       "owner_role": "Retrieval/backend",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
+      "owner": "g1_retrieval",
+      "branch": "feat/v2-01-retrieval-contract",
+      "worktree_alias": "KnowPilot-V2-01",
       "completed_nodes": [],
       "prs": [],
-      "head_sha": null,
+      "head_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
       "merge_sha": null,
       "acceptance": {
         "status": "not_run",
@@ -144,23 +150,25 @@
       },
       "release_node": "1.released",
       "preparation": {
-        "plan_checked_at": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
+        "plan_checked_at": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
         "proposed_branch": "feat/v2-01-retrieval-contract",
         "proposed_worktree_alias": "KnowPilot-V2-01",
-        "release_gate": "G0.pass"
-      }
+        "release_gate": "G0.pass",
+        "released_by": "G0.pass"
+      },
+      "base_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5"
     },
     {
       "issue": 2,
       "stable_id": "V2-02",
-      "state": "blocked",
+      "state": "in_progress",
       "owner_role": "Frontend/chat",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
+      "owner": "g1_ask",
+      "branch": "feat/v2-02-ask-shell",
+      "worktree_alias": "KnowPilot-V2-02",
       "completed_nodes": [],
       "prs": [],
-      "head_sha": null,
+      "head_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
       "merge_sha": null,
       "acceptance": {
         "status": "not_run",
@@ -169,11 +177,13 @@
       },
       "release_node": "2.released",
       "preparation": {
-        "plan_checked_at": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
+        "plan_checked_at": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
         "proposed_branch": "feat/v2-02-ask-shell",
         "proposed_worktree_alias": "KnowPilot-V2-02",
-        "release_gate": "G0.pass"
-      }
+        "release_gate": "G0.pass",
+        "released_by": "G0.pass"
+      },
+      "base_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5"
     },
     {
       "issue": 3,
@@ -368,33 +378,35 @@
     {
       "issue": 13,
       "stable_id": "V2-13",
-      "state": "awaiting_review",
+      "state": "in_progress",
       "owner_role": "Quality/eval",
       "owner": "coordinator",
       "branch": "eval/v2-g0-evidence",
       "worktree_alias": "KnowPilot-V2-G0",
       "completed_nodes": [
-        "13-A.run"
+        "13-A.run",
+        "13-A.accepted"
       ],
       "prs": [
         16
       ],
-      "head_sha": "d400d93d2821e68a0843b0595688d3d7f186bb76",
-      "head_sha_scope": "tested_evaluation_code_commit",
-      "merge_sha": null,
+      "head_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
+      "head_sha_scope": "g0_postmerge_tested_commit",
+      "merge_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
       "acceptance": {
         "status": "pending",
         "evidence": [
           "docs/plans/v2/gates/G0.md",
           "docs/plans/v2/V2-13.md"
         ],
-        "reviewer": null
+        "reviewer": null,
+        "reason": "13-A offline accepted. 13-B and 13-C remain open."
       },
       "release_node": "G5.pass",
       "phases": {
         "13-A": {
-          "state": "awaiting_review",
-          "acceptance": "pending",
+          "state": "accepted",
+          "acceptance": "passed",
           "tested_sha": "d400d93d2821e68a0843b0595688d3d7f186bb76",
           "offline_report_sha256": "c2008948503cc7770c881dbf1df560242e180556c3340ba4ed02570e93081d55",
           "fixture": "5d4ca679bfc6",
@@ -421,10 +433,17 @@
             ],
             "not_run_checks": 5
           },
-          "post_merge_regression": "pending"
+          "post_merge_regression": "passed",
+          "reviewer": "user",
+          "post_merge_tested_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
+          "post_merge_report_hashes": {
+            "targeted.json": "015c6051f4aa84bf25d82b588e6805bf1cf26047c0bfb0b2ba727371c44dbe51",
+            "blockers.json": "af210c582f89fd021bf7a8a835688570205f4ac403f09bff7989d9d67cbac324",
+            "commands.json": "9eb1fd525df10b0ac92348bcb9675b42bc9df95826893e2c38a12fa6af5ec25a"
+          }
         },
         "13-B": {
-          "state": "planned",
+          "state": "in_progress",
           "per_feature": {}
         },
         "13-C": {
@@ -433,5 +452,6 @@
         }
       }
     }
-  ]
+  ],
+  "development_baseline_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5"
 }
