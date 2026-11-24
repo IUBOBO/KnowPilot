@@ -18,7 +18,28 @@
     "branch": "docs/v2-unified-plan",
     "status": "awaiting_merge",
     "merge_sha": null,
-    "issue_sync_verification": null
+    "issue_sync_verification": {
+      "status": "verified",
+      "open_issues": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "preserved_acceptance_checks": 53,
+      "plan_revision_sha": "641d590d02f29961130e8fa5f6de871e392b028a"
+    },
+    "pr": 15,
+    "document_sha": "641d590d02f29961130e8fa5f6de871e392b028a"
   },
   "stages": [
     {
