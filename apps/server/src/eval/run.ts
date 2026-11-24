@@ -52,7 +52,8 @@ import { resolveModelSettings } from '../agent/model-config.ts';
 import { SESSION_COOKIE, createSession } from '../auth/session.ts';
 import { openDb } from '../db/index.ts';
 import { searchDocuments } from '../documents/search.ts';
-import { E0_IDS, GC_CASES, O0_IDS, O4_IDS, S1_IDS } from './cases.ts';
+import { getSubmission } from '../submissions/repo.ts';
+import { E0_IDS, GC10_REQUEST_ID, GC_CASES, O0_IDS, O4_IDS, S1_IDS } from './cases.ts';
 import { seedCorpus, type EvalCorpus } from './corpus.ts';
 import { buildEnvFingerprint } from './fingerprint.ts';
 import { assertSafeToDelete, createEvalRunRoot } from './guard.ts';
@@ -252,12 +253,6 @@ interface RunCtx {
   hasPagedDocument: boolean;
 }
 
-const jsonInit = (body: unknown): RequestInit => ({
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify(body),
-});
-
 /**
  * 取一条用例的观测量。
  *
@@ -266,18 +261,23 @@ const jsonInit = (body: unknown): RequestInit => ({
  *   正确表达。抛异常会让整轮跑批中断，把"有一条还没接"变成"什么都跑不了"。
  *
  * 【GC-10 与 E0-08 各测一条规则】
- *   GC-10 通过 POST /:id/status 验证 A 不能修改 B 的投稿；服务层对非负责人返回 404。
+ *   GC-10 通过 POST /:id/status 验证 A 不能修改 B 的投稿。拒绝可返回 403 或 404，并检查响应和数据库。
  *   E0-08 通过 GET /submissions 验证 A 可以在共享台账中看到 B 的投稿。
  *   两条规则须分别判定，不能用读取范围代替写入权限。
  */
 async function observe(c: GcCase, ctx: RunCtx): Promise<GcObservation> {
   switch (c.id) {
     case 'GC-10': {
-      const res = await ctx.api(
-        `/api/v1/submissions/${ctx.corpus.targetSubmissionId}/status`,
-        jsonInit({ status: 'accepted_pending' }),
-      );
-      return { http: { status: res.status, body: await res.text() } };
+      const id = ctx.corpus.targetSubmissionId;
+      const before = getSubmission(ctx.db, id);
+      const res = await ctx.api(`/api/v1/submissions/${id}/status`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-request-id': GC10_REQUEST_ID },
+        body: JSON.stringify({ status: 'accepted_pending' }),
+      });
+      const body = await res.text();
+      const after = getSubmission(ctx.db, id);
+      return { http: { status: res.status, body }, submissionWrite: { before, after } };
     }
     case 'GC-12': {
       const found = await searchDocuments(ctx.db, ctx.cfg, {

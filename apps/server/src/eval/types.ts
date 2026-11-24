@@ -13,7 +13,7 @@
  *     · NOT_IMPLEMENTED —— 该用例对应的能力系统里根本没有（见 cases.ts 的 note）。
  *   把这两件事塞进 DEGRADE 会撒谎：那不是"降级交付"，是"没测"。
  */
-import type { Answer, AskHistoryTurn } from '@knowpilot/shared';
+import type { Answer, AskHistoryTurn, Submission } from '@knowpilot/shared';
 import type { BudgetLimits, BudgetUsage } from '../agent/budget.ts';
 import type { EnvFingerprint } from './fingerprint.ts';
 
@@ -77,8 +77,10 @@ export type GcCheck =
   | { k: 'http-body-includes'; scorer: Scorer; title: string; needle: string }
   /** 该次运行调用过某个工具 */
   | { k: 'tool-called'; scorer: Scorer; title: string; tool: string }
-  /** HTTP 响应码等于 status（跨权限用例走真实路由） */
-  | { k: 'http-status-is'; scorer: Scorer; title: string; status: number }
+  /** HTTP 响应码等于单个期望值，或命中一组明确允许的状态码。 */
+  | { k: 'http-status-is'; scorer: Scorer; title: string; status: number | readonly [number, ...number[]] }
+  | { k: 'submission-denial-body'; scorer: Scorer; title: string; requestId: string }
+  | { k: 'submission-unchanged'; scorer: Scorer; title: string }
   /** 检索命中数等于 n（GC-12：未确认的草案 0 命中） */
   | { k: 'search-hits'; scorer: Scorer; title: string; n: number }
   /** 该次运行的检索候选命中了至少一条金标块（"召回有没有到位"的机器可判形态） */
@@ -180,6 +182,8 @@ export interface GcCase {
   note?: string;
 }
 
+type SubmissionWriteSnapshot = Pick<Submission, 'status' | 'statusSince' | 'updatedAt' | 'rounds' | 'revision' | 'history'>;
+
 /**
  * 一次用例运行的**观测量**。跑批端（run.ts）负责把各种来源塞进来：
  * 问答链路给 `answer` + `toolCalls`，跨权限用例给 `http`，GC-12 给 `searchHits`。
@@ -191,6 +195,8 @@ export interface GcObservation {
   answer?: Answer;
   toolCalls?: readonly string[];
   http?: { status: number; body: string };
+  /** GC-10 同一次写入请求两侧，从隔离数据库读到的目标记录。 */
+  submissionWrite?: { before: SubmissionWriteSnapshot | null; after: SubmissionWriteSnapshot | null };
   searchHits?: number;
   /**
    * 本轮语料里**是否含分页文档**（有页码的块）。GC-01 的"引用带具体页码"要靠它。
