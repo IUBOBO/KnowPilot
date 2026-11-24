@@ -6,7 +6,6 @@ build/
 
 # 运行期数据：数据库文件、上传原件、解析中间产物 —— 全部不进版本库
 data/
-!data/.gitkeep
 *.db
 *.db-*
 *.sqlite
@@ -41,7 +40,7 @@ tmp/
 .codex/
 /githubKP/
 /c-drive-cleanup/
-/KnowPilot-github*.zip
+KnowPilot-github*.zip
 /KnowPilot-V2-Delivery/
 
 # 含原始评测材料、本机部署或账号信息的内部文档
