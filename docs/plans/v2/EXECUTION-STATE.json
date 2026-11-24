@@ -7,12 +7,12 @@
   "baseline": {
     "pr": 14,
     "branch": "baseline/knowpilot-v2",
-    "head_sha": "668bb3174d9615c3a3403ad0230b1702be7a026e",
-    "main_sha": "501ee5302cdc8f5a99dc21ae082f0b05b6b2339f",
-    "merge_sha": null,
-    "status": "reviewed_open",
+    "head_sha": "82834e51740aba89328c585a3da13df4ade81859",
+    "main_sha": "a0aac6b874241a2e35379551ddfced35d267605d",
+    "merge_sha": "a0aac6b874241a2e35379551ddfced35d267605d",
+    "status": "merged",
     "prior_engineering_validation": "passed",
-    "review_followup": "Check the root-only archive ignore regression before merging."
+    "review_followup": "Fixed and verified repository-wide private archive patterns and removed the ineffective data placeholder exception."
   },
   "planning": {
     "branch": "docs/v2-unified-plan",
@@ -53,7 +53,6 @@
         "evidence": []
       },
       "blockers": [
-        "baseline-PR-14.merged",
         "planning.merged-and-synced",
         "13-A.accepted"
       ]

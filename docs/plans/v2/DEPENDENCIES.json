@@ -3,10 +3,10 @@
   "repo": "IUBOBO/KnowPilot",
   "baseline": {
     "pr": 14,
-    "reviewed_head": "668bb3174d9615c3a3403ad0230b1702be7a026e",
+    "reviewed_head": "82834e51740aba89328c585a3da13df4ade81859",
     "source": "501ee5302cdc8f5a99dc21ae082f0b05b6b2339f",
-    "merge_sha": null,
-    "phase": "awaiting_approved_merge"
+    "merge_sha": "a0aac6b874241a2e35379551ddfced35d267605d",
+    "phase": "merged"
   },
   "state_path": "docs/plans/v2/EXECUTION-STATE.json",
   "stages": [
@@ -333,8 +333,7 @@
         "baseline-PR-14.merged"
       ],
       "merge_dependencies": [
-        "13-C.accepted",
-        "G5.pass"
+        "13-C.accepted"
       ],
       "integration_dependencies": [],
       "nodes": [
@@ -365,11 +364,14 @@
         "13-B.12.pre",
         "13-B.12.post",
         "13-C.run",
-        "13-C.accepted"
+        "13-C.accepted",
+        "13-C.merged",
+        "13-C.post-merge-verified"
       ],
       "start_node": "13-A.run",
-      "merge_node": null,
-      "release_node": "G5.pass"
+      "merge_node": "13-C.merged",
+      "release_node": "G5.pass",
+      "close_after": "G5.pass"
     }
   ],
   "evaluation": {
@@ -386,7 +388,10 @@
       },
       "13-C": {
         "start": "13-C.run",
-        "accept": "13-C.accepted"
+        "accept": "13-C.accepted",
+        "merge": "13-C.merged",
+        "post_merge": "13-C.post-merge-verified",
+        "acceptance_is_pre_merge": true
       }
     }
   },
@@ -969,6 +974,16 @@
       {
         "id": "G5.pass",
         "kind": "gate"
+      },
+      {
+        "id": "13-C.merged",
+        "kind": "merge",
+        "issue": 13
+      },
+      {
+        "id": "13-C.post-merge-verified",
+        "kind": "evaluation",
+        "issue": 13
       }
     ],
     "edges": [
@@ -1739,6 +1754,16 @@
       },
       {
         "from": "13-C.accepted",
+        "to": "13-C.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "13-C.merged",
+        "to": "13-C.post-merge-verified",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-C.post-merge-verified",
         "to": "G5.pass",
         "kind": "gate"
       }
