@@ -1,0 +1,364 @@
+{
+  "version": 1,
+  "repo": "IUBOBO/KnowPilot",
+  "maintainer": "coordinator",
+  "dependency_file": "docs/plans/v2/DEPENDENCIES.json",
+  "state_rule": "Only the coordinator edits this file. A path is a local alias, never a machine path. Null means not yet assigned or accepted.",
+  "baseline": {
+    "pr": 14,
+    "branch": "baseline/knowpilot-v2",
+    "head_sha": "668bb3174d9615c3a3403ad0230b1702be7a026e",
+    "main_sha": "501ee5302cdc8f5a99dc21ae082f0b05b6b2339f",
+    "merge_sha": null,
+    "status": "reviewed_open",
+    "prior_engineering_validation": "passed",
+    "review_followup": "Check the root-only archive ignore regression before merging."
+  },
+  "planning": {
+    "branch": "docs/v2-unified-plan",
+    "status": "awaiting_merge",
+    "merge_sha": null,
+    "issue_sync_verification": null
+  },
+  "stages": [
+    {
+      "id": "G0",
+      "status": "blocked",
+      "report": "docs/plans/v2/gates/G0.md",
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "reviewer": null,
+        "evidence": []
+      },
+      "blockers": [
+        "baseline-PR-14.merged",
+        "planning.merged-and-synced",
+        "13-A.accepted"
+      ]
+    },
+    {
+      "id": "G1",
+      "status": "planned",
+      "report": "docs/plans/v2/gates/G1.md",
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "reviewer": null,
+        "evidence": []
+      },
+      "blockers": []
+    },
+    {
+      "id": "G2",
+      "status": "planned",
+      "report": "docs/plans/v2/gates/G2.md",
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "reviewer": null,
+        "evidence": []
+      },
+      "blockers": []
+    },
+    {
+      "id": "G3",
+      "status": "planned",
+      "report": "docs/plans/v2/gates/G3.md",
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "reviewer": null,
+        "evidence": []
+      },
+      "blockers": []
+    },
+    {
+      "id": "G4",
+      "status": "planned",
+      "report": "docs/plans/v2/gates/G4.md",
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "reviewer": null,
+        "evidence": []
+      },
+      "blockers": []
+    },
+    {
+      "id": "G5",
+      "status": "planned",
+      "report": "docs/plans/v2/gates/G5.md",
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "reviewer": null,
+        "evidence": []
+      },
+      "blockers": []
+    }
+  ],
+  "tasks": [
+    {
+      "issue": 1,
+      "stable_id": "V2-01",
+      "state": "blocked",
+      "owner_role": "Retrieval/backend",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "1.released"
+    },
+    {
+      "issue": 2,
+      "stable_id": "V2-02",
+      "state": "blocked",
+      "owner_role": "Frontend/chat",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "2.released"
+    },
+    {
+      "issue": 3,
+      "stable_id": "V2-03",
+      "state": "planned",
+      "owner_role": "Answer composer",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "3.full-accepted"
+    },
+    {
+      "issue": 4,
+      "stable_id": "V2-04",
+      "state": "planned",
+      "owner_role": "Evidence UI",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "4.released"
+    },
+    {
+      "issue": 5,
+      "stable_id": "V2-05",
+      "state": "planned",
+      "owner_role": "PDF viewer",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "5.released"
+    },
+    {
+      "issue": 6,
+      "stable_id": "V2-06",
+      "state": "planned",
+      "owner_role": "Trace/telemetry",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "6.released"
+    },
+    {
+      "issue": 7,
+      "stable_id": "V2-07",
+      "state": "planned",
+      "owner_role": "Search UI",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "7.released"
+    },
+    {
+      "issue": 8,
+      "stable_id": "V2-08",
+      "state": "planned",
+      "owner_role": "Conversation context",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "8.released"
+    },
+    {
+      "issue": 9,
+      "stable_id": "V2-09",
+      "state": "planned",
+      "owner_role": "Notes/core",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "9.released"
+    },
+    {
+      "issue": 10,
+      "stable_id": "V2-10",
+      "state": "planned",
+      "owner_role": "Notes/export",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "10.released"
+    },
+    {
+      "issue": 11,
+      "stable_id": "V2-11",
+      "state": "planned",
+      "owner_role": "Knowledge/drafts",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "11.released"
+    },
+    {
+      "issue": 12,
+      "stable_id": "V2-12",
+      "state": "planned",
+      "owner_role": "Knowledge/lifecycle",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "12.released"
+    },
+    {
+      "issue": 13,
+      "stable_id": "V2-13",
+      "state": "blocked",
+      "owner_role": "Quality/eval",
+      "owner": null,
+      "branch": null,
+      "worktree_alias": null,
+      "completed_nodes": [],
+      "prs": [],
+      "head_sha": null,
+      "merge_sha": null,
+      "acceptance": {
+        "status": "not_run",
+        "evidence": [],
+        "reviewer": null
+      },
+      "release_node": "G5.pass",
+      "phases": {
+        "13-A": {
+          "state": "blocked",
+          "acceptance": "not_run"
+        },
+        "13-B": {
+          "state": "planned",
+          "per_feature": {}
+        },
+        "13-C": {
+          "state": "planned",
+          "acceptance": "not_run"
+        }
+      }
+    }
+  ]
+}

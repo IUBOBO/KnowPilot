@@ -1,0 +1,1747 @@
+{
+  "version": 2,
+  "repo": "IUBOBO/KnowPilot",
+  "baseline": {
+    "pr": 14,
+    "reviewed_head": "668bb3174d9615c3a3403ad0230b1702be7a026e",
+    "source": "501ee5302cdc8f5a99dc21ae082f0b05b6b2339f",
+    "merge_sha": null,
+    "phase": "awaiting_approved_merge"
+  },
+  "state_path": "docs/plans/v2/EXECUTION-STATE.json",
+  "stages": [
+    {
+      "id": "G0",
+      "anchor": "可复现、安全的改造前基线",
+      "report": "docs/plans/v2/gates/G0.md",
+      "pass_node": "G0.pass"
+    },
+    {
+      "id": "G1",
+      "anchor": "检索协议与问答壳稳定",
+      "report": "docs/plans/v2/gates/G1.md",
+      "pass_node": "G1.pass"
+    },
+    {
+      "id": "G2",
+      "anchor": "检索、动态问答、证据阅读完整可用",
+      "report": "docs/plans/v2/gates/G2.md",
+      "pass_node": "G2.pass"
+    },
+    {
+      "id": "G3",
+      "anchor": "研究笔记、导出、草稿闭环",
+      "report": "docs/plans/v2/gates/G3.md",
+      "pass_node": "G3.pass"
+    },
+    {
+      "id": "G4",
+      "anchor": "主动知识发现与审核",
+      "report": "docs/plans/v2/gates/G4.md",
+      "pass_node": "G4.pass"
+    },
+    {
+      "id": "G5",
+      "anchor": "全链路验收",
+      "report": "docs/plans/v2/gates/G5.md",
+      "pass_node": "G5.pass"
+    }
+  ],
+  "tasks": [
+    {
+      "issue": 1,
+      "stable_id": "V2-01",
+      "stage": "G1",
+      "owner_role": "Retrieval/backend",
+      "plan": "docs/plans/v2/V2-01.md",
+      "start_gate": "G0",
+      "start_dependencies": [],
+      "merge_dependencies": [],
+      "integration_dependencies": [],
+      "nodes": [
+        "1.N1",
+        "1.N2",
+        "1.N3"
+      ],
+      "start_node": "1.ready",
+      "merge_node": "1.merged",
+      "release_node": "1.released"
+    },
+    {
+      "issue": 2,
+      "stable_id": "V2-02",
+      "stage": "G1",
+      "owner_role": "Frontend/chat",
+      "plan": "docs/plans/v2/V2-02.md",
+      "start_gate": "G0",
+      "start_dependencies": [],
+      "merge_dependencies": [],
+      "integration_dependencies": [],
+      "nodes": [
+        "2.N1",
+        "2.N2",
+        "2.N3"
+      ],
+      "start_node": "2.ready",
+      "merge_node": "2.merged",
+      "release_node": "2.released"
+    },
+    {
+      "issue": 3,
+      "stable_id": "V2-03",
+      "stage": "G2",
+      "owner_role": "Answer composer",
+      "plan": "docs/plans/v2/V2-03.md",
+      "start_gate": "G1",
+      "start_dependencies": [
+        "1.released",
+        "2.released"
+      ],
+      "merge_dependencies": [],
+      "integration_dependencies": [
+        {
+          "at": "3.ready",
+          "requires": "3-4.contract-frozen"
+        }
+      ],
+      "nodes": [
+        "3.N1",
+        "3.N2",
+        "3.N3"
+      ],
+      "start_node": "3.ready",
+      "merge_node": "3.merged",
+      "release_node": "3.full-accepted",
+      "contract_release_node": "3.released",
+      "merge_issue_reference": "Refs #3"
+    },
+    {
+      "issue": 4,
+      "stable_id": "V2-04",
+      "stage": "G2",
+      "owner_role": "Evidence UI",
+      "plan": "docs/plans/v2/V2-04.md",
+      "start_gate": "G1",
+      "start_dependencies": [
+        "1.released",
+        "2.released"
+      ],
+      "merge_dependencies": [
+        "3.released"
+      ],
+      "integration_dependencies": [
+        {
+          "at": "4.ready",
+          "requires": "3-4.contract-frozen"
+        },
+        {
+          "at": "4.N3",
+          "requires": "3.released"
+        }
+      ],
+      "nodes": [
+        "4.N1",
+        "4.N2",
+        "4.N3"
+      ],
+      "start_node": "4.ready",
+      "merge_node": "4.merged",
+      "release_node": "4.released"
+    },
+    {
+      "issue": 5,
+      "stable_id": "V2-05",
+      "stage": "G2",
+      "owner_role": "PDF viewer",
+      "plan": "docs/plans/v2/V2-05.md",
+      "start_gate": "G1",
+      "start_dependencies": [
+        "4.released"
+      ],
+      "merge_dependencies": [],
+      "integration_dependencies": [],
+      "nodes": [
+        "5.N1",
+        "5.N2",
+        "5.N3"
+      ],
+      "start_node": "5.ready",
+      "merge_node": "5.merged",
+      "release_node": "5.released"
+    },
+    {
+      "issue": 6,
+      "stable_id": "V2-06",
+      "stage": "G2",
+      "owner_role": "Trace/telemetry",
+      "plan": "docs/plans/v2/V2-06.md",
+      "start_gate": "G1",
+      "start_dependencies": [
+        "1.released",
+        "2.released"
+      ],
+      "merge_dependencies": [],
+      "integration_dependencies": [],
+      "nodes": [
+        "6.N1",
+        "6.N2",
+        "6.N3"
+      ],
+      "start_node": "6.ready",
+      "merge_node": "6.merged",
+      "release_node": "6.released"
+    },
+    {
+      "issue": 7,
+      "stable_id": "V2-07",
+      "stage": "G2",
+      "owner_role": "Search UI",
+      "plan": "docs/plans/v2/V2-07.md",
+      "start_gate": "G1",
+      "start_dependencies": [
+        "1.released",
+        "4.released"
+      ],
+      "merge_dependencies": [],
+      "integration_dependencies": [],
+      "nodes": [
+        "7.N1",
+        "7.N2",
+        "7.N3"
+      ],
+      "start_node": "7.ready",
+      "merge_node": "7.merged",
+      "release_node": "7.released"
+    },
+    {
+      "issue": 8,
+      "stable_id": "V2-08",
+      "stage": "G2",
+      "owner_role": "Conversation context",
+      "plan": "docs/plans/v2/V2-08.md",
+      "start_gate": "G1",
+      "start_dependencies": [
+        "3.full-accepted",
+        "4.released",
+        "7.released"
+      ],
+      "merge_dependencies": [],
+      "integration_dependencies": [],
+      "nodes": [
+        "8.N1",
+        "8.N2",
+        "8.N3"
+      ],
+      "start_node": "8.ready",
+      "merge_node": "8.merged",
+      "release_node": "8.released"
+    },
+    {
+      "issue": 9,
+      "stable_id": "V2-09",
+      "stage": "G3",
+      "owner_role": "Notes/core",
+      "plan": "docs/plans/v2/V2-09.md",
+      "start_gate": "G2",
+      "start_dependencies": [
+        "3.full-accepted",
+        "4.released"
+      ],
+      "merge_dependencies": [],
+      "integration_dependencies": [],
+      "nodes": [
+        "9.N1",
+        "9.N2",
+        "9.N3"
+      ],
+      "start_node": "9.ready",
+      "merge_node": "9.merged",
+      "release_node": "9.released"
+    },
+    {
+      "issue": 10,
+      "stable_id": "V2-10",
+      "stage": "G3",
+      "owner_role": "Notes/export",
+      "plan": "docs/plans/v2/V2-10.md",
+      "start_gate": "G2",
+      "start_dependencies": [
+        "9.released"
+      ],
+      "merge_dependencies": [],
+      "integration_dependencies": [],
+      "nodes": [
+        "10.N1",
+        "10.N2",
+        "10.N3"
+      ],
+      "start_node": "10.ready",
+      "merge_node": "10.merged",
+      "release_node": "10.released"
+    },
+    {
+      "issue": 11,
+      "stable_id": "V2-11",
+      "stage": "G3",
+      "owner_role": "Knowledge/drafts",
+      "plan": "docs/plans/v2/V2-11.md",
+      "start_gate": "G2",
+      "start_dependencies": [
+        "9.released"
+      ],
+      "merge_dependencies": [],
+      "integration_dependencies": [],
+      "nodes": [
+        "11.N1",
+        "11.N2",
+        "11.N3"
+      ],
+      "start_node": "11.ready",
+      "merge_node": "11.merged",
+      "release_node": "11.released"
+    },
+    {
+      "issue": 12,
+      "stable_id": "V2-12",
+      "stage": "G4",
+      "owner_role": "Knowledge/lifecycle",
+      "plan": "docs/plans/v2/V2-12.md",
+      "start_gate": "G3",
+      "start_dependencies": [
+        "11.released"
+      ],
+      "merge_dependencies": [],
+      "integration_dependencies": [],
+      "nodes": [
+        "12.N1",
+        "12.N2",
+        "12.N3"
+      ],
+      "start_node": "12.ready",
+      "merge_node": "12.merged",
+      "release_node": "12.released"
+    },
+    {
+      "issue": 13,
+      "stable_id": "V2-13",
+      "stage": "G0-G5",
+      "owner_role": "Quality/eval",
+      "plan": "docs/plans/v2/V2-13.md",
+      "start_gate": null,
+      "start_dependencies": [
+        "planning.merged-and-synced",
+        "baseline-PR-14.merged"
+      ],
+      "merge_dependencies": [
+        "13-C.accepted",
+        "G5.pass"
+      ],
+      "integration_dependencies": [],
+      "nodes": [
+        "13-A.run",
+        "13-A.accepted",
+        "13-B.1.pre",
+        "13-B.1.post",
+        "13-B.2.pre",
+        "13-B.2.post",
+        "13-B.3.pre",
+        "13-B.3.post",
+        "13-B.4.pre",
+        "13-B.4.post",
+        "13-B.5.pre",
+        "13-B.5.post",
+        "13-B.6.pre",
+        "13-B.6.post",
+        "13-B.7.pre",
+        "13-B.7.post",
+        "13-B.8.pre",
+        "13-B.8.post",
+        "13-B.9.pre",
+        "13-B.9.post",
+        "13-B.10.pre",
+        "13-B.10.post",
+        "13-B.11.pre",
+        "13-B.11.post",
+        "13-B.12.pre",
+        "13-B.12.post",
+        "13-C.run",
+        "13-C.accepted"
+      ],
+      "start_node": "13-A.run",
+      "merge_node": null,
+      "release_node": "G5.pass"
+    }
+  ],
+  "evaluation": {
+    "issue": 13,
+    "plan": "docs/plans/v2/V2-13.md",
+    "phases": {
+      "13-A": {
+        "start": "13-A.run",
+        "accept": "13-A.accepted"
+      },
+      "13-B": {
+        "pre_merge_pattern": "13-B.<issue>.pre",
+        "post_merge_pattern": "13-B.<issue>.post"
+      },
+      "13-C": {
+        "start": "13-C.run",
+        "accept": "13-C.accepted"
+      }
+    }
+  },
+  "graph": {
+    "edge_direction": "Edges point from prerequisites to dependent nodes. A node is eligible only after every incoming prerequisite is verified.",
+    "edge_kinds": {
+      "start": "task eligibility",
+      "node": "steps within a task",
+      "integration": "cross-task contract or actual linkage",
+      "merge": "human-approved publication to main",
+      "gate": "reviewed stage/evidence",
+      "evaluation": "13-B acceptance and post-merge release"
+    },
+    "nodes": [
+      {
+        "id": "baseline-PR-14.merged",
+        "kind": "engineering-anchor"
+      },
+      {
+        "id": "planning.merged-and-synced",
+        "kind": "planning-anchor"
+      },
+      {
+        "id": "13-A.run",
+        "kind": "evaluation",
+        "issue": 13
+      },
+      {
+        "id": "13-A.accepted",
+        "kind": "evaluation",
+        "issue": 13
+      },
+      {
+        "id": "G0.pass",
+        "kind": "gate"
+      },
+      {
+        "id": "3-4.contract-frozen",
+        "kind": "integration",
+        "issues": [
+          3,
+          4
+        ]
+      },
+      {
+        "id": "1.ready",
+        "kind": "task-ready",
+        "issue": 1
+      },
+      {
+        "id": "1.N1",
+        "kind": "task-node",
+        "issue": 1
+      },
+      {
+        "id": "1.N2",
+        "kind": "task-node",
+        "issue": 1
+      },
+      {
+        "id": "1.N3",
+        "kind": "task-node",
+        "issue": 1
+      },
+      {
+        "id": "13-B.1.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 1
+      },
+      {
+        "id": "1.merged",
+        "kind": "merge",
+        "issue": 1
+      },
+      {
+        "id": "13-B.1.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 1
+      },
+      {
+        "id": "1.released",
+        "kind": "release",
+        "issue": 1
+      },
+      {
+        "id": "2.ready",
+        "kind": "task-ready",
+        "issue": 2
+      },
+      {
+        "id": "2.N1",
+        "kind": "task-node",
+        "issue": 2
+      },
+      {
+        "id": "2.N2",
+        "kind": "task-node",
+        "issue": 2
+      },
+      {
+        "id": "2.N3",
+        "kind": "task-node",
+        "issue": 2
+      },
+      {
+        "id": "13-B.2.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 2
+      },
+      {
+        "id": "2.merged",
+        "kind": "merge",
+        "issue": 2
+      },
+      {
+        "id": "13-B.2.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 2
+      },
+      {
+        "id": "2.released",
+        "kind": "release",
+        "issue": 2
+      },
+      {
+        "id": "3.ready",
+        "kind": "task-ready",
+        "issue": 3
+      },
+      {
+        "id": "3.N1",
+        "kind": "task-node",
+        "issue": 3
+      },
+      {
+        "id": "3.N2",
+        "kind": "task-node",
+        "issue": 3
+      },
+      {
+        "id": "3.N3",
+        "kind": "task-node",
+        "issue": 3
+      },
+      {
+        "id": "13-B.3.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 3
+      },
+      {
+        "id": "3.merged",
+        "kind": "merge",
+        "issue": 3
+      },
+      {
+        "id": "13-B.3.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 3
+      },
+      {
+        "id": "3.released",
+        "kind": "contract-release",
+        "issue": 3
+      },
+      {
+        "id": "4.ready",
+        "kind": "task-ready",
+        "issue": 4
+      },
+      {
+        "id": "4.N1",
+        "kind": "task-node",
+        "issue": 4
+      },
+      {
+        "id": "4.N2",
+        "kind": "task-node",
+        "issue": 4
+      },
+      {
+        "id": "4.N3",
+        "kind": "task-node",
+        "issue": 4
+      },
+      {
+        "id": "13-B.4.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 4
+      },
+      {
+        "id": "4.merged",
+        "kind": "merge",
+        "issue": 4
+      },
+      {
+        "id": "13-B.4.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 4
+      },
+      {
+        "id": "4.released",
+        "kind": "release",
+        "issue": 4
+      },
+      {
+        "id": "5.ready",
+        "kind": "task-ready",
+        "issue": 5
+      },
+      {
+        "id": "5.N1",
+        "kind": "task-node",
+        "issue": 5
+      },
+      {
+        "id": "5.N2",
+        "kind": "task-node",
+        "issue": 5
+      },
+      {
+        "id": "5.N3",
+        "kind": "task-node",
+        "issue": 5
+      },
+      {
+        "id": "13-B.5.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 5
+      },
+      {
+        "id": "5.merged",
+        "kind": "merge",
+        "issue": 5
+      },
+      {
+        "id": "13-B.5.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 5
+      },
+      {
+        "id": "5.released",
+        "kind": "release",
+        "issue": 5
+      },
+      {
+        "id": "6.ready",
+        "kind": "task-ready",
+        "issue": 6
+      },
+      {
+        "id": "6.N1",
+        "kind": "task-node",
+        "issue": 6
+      },
+      {
+        "id": "6.N2",
+        "kind": "task-node",
+        "issue": 6
+      },
+      {
+        "id": "6.N3",
+        "kind": "task-node",
+        "issue": 6
+      },
+      {
+        "id": "13-B.6.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 6
+      },
+      {
+        "id": "6.merged",
+        "kind": "merge",
+        "issue": 6
+      },
+      {
+        "id": "13-B.6.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 6
+      },
+      {
+        "id": "6.released",
+        "kind": "release",
+        "issue": 6
+      },
+      {
+        "id": "7.ready",
+        "kind": "task-ready",
+        "issue": 7
+      },
+      {
+        "id": "7.N1",
+        "kind": "task-node",
+        "issue": 7
+      },
+      {
+        "id": "7.N2",
+        "kind": "task-node",
+        "issue": 7
+      },
+      {
+        "id": "7.N3",
+        "kind": "task-node",
+        "issue": 7
+      },
+      {
+        "id": "13-B.7.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 7
+      },
+      {
+        "id": "7.merged",
+        "kind": "merge",
+        "issue": 7
+      },
+      {
+        "id": "13-B.7.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 7
+      },
+      {
+        "id": "7.released",
+        "kind": "release",
+        "issue": 7
+      },
+      {
+        "id": "8.ready",
+        "kind": "task-ready",
+        "issue": 8
+      },
+      {
+        "id": "8.N1",
+        "kind": "task-node",
+        "issue": 8
+      },
+      {
+        "id": "8.N2",
+        "kind": "task-node",
+        "issue": 8
+      },
+      {
+        "id": "8.N3",
+        "kind": "task-node",
+        "issue": 8
+      },
+      {
+        "id": "13-B.8.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 8
+      },
+      {
+        "id": "8.merged",
+        "kind": "merge",
+        "issue": 8
+      },
+      {
+        "id": "13-B.8.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 8
+      },
+      {
+        "id": "8.released",
+        "kind": "release",
+        "issue": 8
+      },
+      {
+        "id": "9.ready",
+        "kind": "task-ready",
+        "issue": 9
+      },
+      {
+        "id": "9.N1",
+        "kind": "task-node",
+        "issue": 9
+      },
+      {
+        "id": "9.N2",
+        "kind": "task-node",
+        "issue": 9
+      },
+      {
+        "id": "9.N3",
+        "kind": "task-node",
+        "issue": 9
+      },
+      {
+        "id": "13-B.9.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 9
+      },
+      {
+        "id": "9.merged",
+        "kind": "merge",
+        "issue": 9
+      },
+      {
+        "id": "13-B.9.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 9
+      },
+      {
+        "id": "9.released",
+        "kind": "release",
+        "issue": 9
+      },
+      {
+        "id": "10.ready",
+        "kind": "task-ready",
+        "issue": 10
+      },
+      {
+        "id": "10.N1",
+        "kind": "task-node",
+        "issue": 10
+      },
+      {
+        "id": "10.N2",
+        "kind": "task-node",
+        "issue": 10
+      },
+      {
+        "id": "10.N3",
+        "kind": "task-node",
+        "issue": 10
+      },
+      {
+        "id": "13-B.10.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 10
+      },
+      {
+        "id": "10.merged",
+        "kind": "merge",
+        "issue": 10
+      },
+      {
+        "id": "13-B.10.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 10
+      },
+      {
+        "id": "10.released",
+        "kind": "release",
+        "issue": 10
+      },
+      {
+        "id": "11.ready",
+        "kind": "task-ready",
+        "issue": 11
+      },
+      {
+        "id": "11.N1",
+        "kind": "task-node",
+        "issue": 11
+      },
+      {
+        "id": "11.N2",
+        "kind": "task-node",
+        "issue": 11
+      },
+      {
+        "id": "11.N3",
+        "kind": "task-node",
+        "issue": 11
+      },
+      {
+        "id": "13-B.11.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 11
+      },
+      {
+        "id": "11.merged",
+        "kind": "merge",
+        "issue": 11
+      },
+      {
+        "id": "13-B.11.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 11
+      },
+      {
+        "id": "11.released",
+        "kind": "release",
+        "issue": 11
+      },
+      {
+        "id": "12.ready",
+        "kind": "task-ready",
+        "issue": 12
+      },
+      {
+        "id": "12.N1",
+        "kind": "task-node",
+        "issue": 12
+      },
+      {
+        "id": "12.N2",
+        "kind": "task-node",
+        "issue": 12
+      },
+      {
+        "id": "12.N3",
+        "kind": "task-node",
+        "issue": 12
+      },
+      {
+        "id": "13-B.12.pre",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 12
+      },
+      {
+        "id": "12.merged",
+        "kind": "merge",
+        "issue": 12
+      },
+      {
+        "id": "13-B.12.post",
+        "kind": "evaluation",
+        "issue": 13,
+        "feature": 12
+      },
+      {
+        "id": "12.released",
+        "kind": "release",
+        "issue": 12
+      },
+      {
+        "id": "3.full-accepted",
+        "kind": "release",
+        "issue": 3
+      },
+      {
+        "id": "G1.pass",
+        "kind": "gate"
+      },
+      {
+        "id": "G2.pass",
+        "kind": "gate"
+      },
+      {
+        "id": "G3.pass",
+        "kind": "gate"
+      },
+      {
+        "id": "G4.pass",
+        "kind": "gate"
+      },
+      {
+        "id": "13-C.run",
+        "kind": "evaluation",
+        "issue": 13
+      },
+      {
+        "id": "13-C.accepted",
+        "kind": "evaluation",
+        "issue": 13
+      },
+      {
+        "id": "G5.pass",
+        "kind": "gate"
+      }
+    ],
+    "edges": [
+      {
+        "from": "baseline-PR-14.merged",
+        "to": "planning.merged-and-synced",
+        "kind": "gate"
+      },
+      {
+        "from": "planning.merged-and-synced",
+        "to": "13-A.run",
+        "kind": "start"
+      },
+      {
+        "from": "baseline-PR-14.merged",
+        "to": "13-A.run",
+        "kind": "start"
+      },
+      {
+        "from": "13-A.run",
+        "to": "13-A.accepted",
+        "kind": "node"
+      },
+      {
+        "from": "13-A.accepted",
+        "to": "G0.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "G1.pass",
+        "to": "3-4.contract-frozen",
+        "kind": "gate"
+      },
+      {
+        "from": "1.released",
+        "to": "3-4.contract-frozen",
+        "kind": "integration"
+      },
+      {
+        "from": "2.released",
+        "to": "3-4.contract-frozen",
+        "kind": "integration"
+      },
+      {
+        "from": "G0.pass",
+        "to": "1.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "1.ready",
+        "to": "1.N1",
+        "kind": "node"
+      },
+      {
+        "from": "1.N1",
+        "to": "1.N2",
+        "kind": "node"
+      },
+      {
+        "from": "1.N2",
+        "to": "1.N3",
+        "kind": "node"
+      },
+      {
+        "from": "1.N3",
+        "to": "13-B.1.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.1.pre",
+        "to": "1.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "1.merged",
+        "to": "13-B.1.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.1.post",
+        "to": "1.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G0.pass",
+        "to": "2.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "2.ready",
+        "to": "2.N1",
+        "kind": "node"
+      },
+      {
+        "from": "2.N1",
+        "to": "2.N2",
+        "kind": "node"
+      },
+      {
+        "from": "2.N2",
+        "to": "2.N3",
+        "kind": "node"
+      },
+      {
+        "from": "2.N3",
+        "to": "13-B.2.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.2.pre",
+        "to": "2.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "2.merged",
+        "to": "13-B.2.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.2.post",
+        "to": "2.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G1.pass",
+        "to": "3.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "1.released",
+        "to": "3.ready",
+        "kind": "start"
+      },
+      {
+        "from": "2.released",
+        "to": "3.ready",
+        "kind": "start"
+      },
+      {
+        "from": "3-4.contract-frozen",
+        "to": "3.ready",
+        "kind": "integration"
+      },
+      {
+        "from": "3.ready",
+        "to": "3.N1",
+        "kind": "node"
+      },
+      {
+        "from": "3.N1",
+        "to": "3.N2",
+        "kind": "node"
+      },
+      {
+        "from": "3.N2",
+        "to": "3.N3",
+        "kind": "node"
+      },
+      {
+        "from": "3.N3",
+        "to": "13-B.3.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.3.pre",
+        "to": "3.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "3.merged",
+        "to": "13-B.3.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.3.post",
+        "to": "3.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G1.pass",
+        "to": "4.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "1.released",
+        "to": "4.ready",
+        "kind": "start"
+      },
+      {
+        "from": "2.released",
+        "to": "4.ready",
+        "kind": "start"
+      },
+      {
+        "from": "3-4.contract-frozen",
+        "to": "4.ready",
+        "kind": "integration"
+      },
+      {
+        "from": "4.ready",
+        "to": "4.N1",
+        "kind": "node"
+      },
+      {
+        "from": "4.N1",
+        "to": "4.N2",
+        "kind": "node"
+      },
+      {
+        "from": "4.N2",
+        "to": "4.N3",
+        "kind": "node"
+      },
+      {
+        "from": "3.released",
+        "to": "4.N3",
+        "kind": "integration"
+      },
+      {
+        "from": "4.N3",
+        "to": "13-B.4.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.4.pre",
+        "to": "4.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "3.released",
+        "to": "4.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "4.merged",
+        "to": "13-B.4.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.4.post",
+        "to": "4.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G1.pass",
+        "to": "5.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "4.released",
+        "to": "5.ready",
+        "kind": "start"
+      },
+      {
+        "from": "5.ready",
+        "to": "5.N1",
+        "kind": "node"
+      },
+      {
+        "from": "5.N1",
+        "to": "5.N2",
+        "kind": "node"
+      },
+      {
+        "from": "5.N2",
+        "to": "5.N3",
+        "kind": "node"
+      },
+      {
+        "from": "5.N3",
+        "to": "13-B.5.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.5.pre",
+        "to": "5.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "5.merged",
+        "to": "13-B.5.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.5.post",
+        "to": "5.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G1.pass",
+        "to": "6.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "1.released",
+        "to": "6.ready",
+        "kind": "start"
+      },
+      {
+        "from": "2.released",
+        "to": "6.ready",
+        "kind": "start"
+      },
+      {
+        "from": "6.ready",
+        "to": "6.N1",
+        "kind": "node"
+      },
+      {
+        "from": "6.N1",
+        "to": "6.N2",
+        "kind": "node"
+      },
+      {
+        "from": "6.N2",
+        "to": "6.N3",
+        "kind": "node"
+      },
+      {
+        "from": "6.N3",
+        "to": "13-B.6.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.6.pre",
+        "to": "6.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "6.merged",
+        "to": "13-B.6.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.6.post",
+        "to": "6.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G1.pass",
+        "to": "7.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "1.released",
+        "to": "7.ready",
+        "kind": "start"
+      },
+      {
+        "from": "4.released",
+        "to": "7.ready",
+        "kind": "start"
+      },
+      {
+        "from": "7.ready",
+        "to": "7.N1",
+        "kind": "node"
+      },
+      {
+        "from": "7.N1",
+        "to": "7.N2",
+        "kind": "node"
+      },
+      {
+        "from": "7.N2",
+        "to": "7.N3",
+        "kind": "node"
+      },
+      {
+        "from": "7.N3",
+        "to": "13-B.7.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.7.pre",
+        "to": "7.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "7.merged",
+        "to": "13-B.7.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.7.post",
+        "to": "7.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G1.pass",
+        "to": "8.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "3.full-accepted",
+        "to": "8.ready",
+        "kind": "start"
+      },
+      {
+        "from": "4.released",
+        "to": "8.ready",
+        "kind": "start"
+      },
+      {
+        "from": "7.released",
+        "to": "8.ready",
+        "kind": "start"
+      },
+      {
+        "from": "8.ready",
+        "to": "8.N1",
+        "kind": "node"
+      },
+      {
+        "from": "8.N1",
+        "to": "8.N2",
+        "kind": "node"
+      },
+      {
+        "from": "8.N2",
+        "to": "8.N3",
+        "kind": "node"
+      },
+      {
+        "from": "8.N3",
+        "to": "13-B.8.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.8.pre",
+        "to": "8.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "8.merged",
+        "to": "13-B.8.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.8.post",
+        "to": "8.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G2.pass",
+        "to": "9.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "3.full-accepted",
+        "to": "9.ready",
+        "kind": "start"
+      },
+      {
+        "from": "4.released",
+        "to": "9.ready",
+        "kind": "start"
+      },
+      {
+        "from": "9.ready",
+        "to": "9.N1",
+        "kind": "node"
+      },
+      {
+        "from": "9.N1",
+        "to": "9.N2",
+        "kind": "node"
+      },
+      {
+        "from": "9.N2",
+        "to": "9.N3",
+        "kind": "node"
+      },
+      {
+        "from": "9.N3",
+        "to": "13-B.9.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.9.pre",
+        "to": "9.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "9.merged",
+        "to": "13-B.9.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.9.post",
+        "to": "9.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G2.pass",
+        "to": "10.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "9.released",
+        "to": "10.ready",
+        "kind": "start"
+      },
+      {
+        "from": "10.ready",
+        "to": "10.N1",
+        "kind": "node"
+      },
+      {
+        "from": "10.N1",
+        "to": "10.N2",
+        "kind": "node"
+      },
+      {
+        "from": "10.N2",
+        "to": "10.N3",
+        "kind": "node"
+      },
+      {
+        "from": "10.N3",
+        "to": "13-B.10.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.10.pre",
+        "to": "10.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "10.merged",
+        "to": "13-B.10.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.10.post",
+        "to": "10.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G2.pass",
+        "to": "11.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "9.released",
+        "to": "11.ready",
+        "kind": "start"
+      },
+      {
+        "from": "11.ready",
+        "to": "11.N1",
+        "kind": "node"
+      },
+      {
+        "from": "11.N1",
+        "to": "11.N2",
+        "kind": "node"
+      },
+      {
+        "from": "11.N2",
+        "to": "11.N3",
+        "kind": "node"
+      },
+      {
+        "from": "11.N3",
+        "to": "13-B.11.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.11.pre",
+        "to": "11.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "11.merged",
+        "to": "13-B.11.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.11.post",
+        "to": "11.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "G3.pass",
+        "to": "12.ready",
+        "kind": "gate"
+      },
+      {
+        "from": "11.released",
+        "to": "12.ready",
+        "kind": "start"
+      },
+      {
+        "from": "12.ready",
+        "to": "12.N1",
+        "kind": "node"
+      },
+      {
+        "from": "12.N1",
+        "to": "12.N2",
+        "kind": "node"
+      },
+      {
+        "from": "12.N2",
+        "to": "12.N3",
+        "kind": "node"
+      },
+      {
+        "from": "12.N3",
+        "to": "13-B.12.pre",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.12.pre",
+        "to": "12.merged",
+        "kind": "merge"
+      },
+      {
+        "from": "12.merged",
+        "to": "13-B.12.post",
+        "kind": "evaluation"
+      },
+      {
+        "from": "13-B.12.post",
+        "to": "12.released",
+        "kind": "evaluation"
+      },
+      {
+        "from": "3.released",
+        "to": "3.full-accepted",
+        "kind": "integration"
+      },
+      {
+        "from": "4.released",
+        "to": "3.full-accepted",
+        "kind": "integration"
+      },
+      {
+        "from": "1.released",
+        "to": "G1.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "2.released",
+        "to": "G1.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "3.full-accepted",
+        "to": "G2.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "4.released",
+        "to": "G2.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "5.released",
+        "to": "G2.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "6.released",
+        "to": "G2.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "7.released",
+        "to": "G2.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "8.released",
+        "to": "G2.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "9.released",
+        "to": "G3.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "10.released",
+        "to": "G3.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "11.released",
+        "to": "G3.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "12.released",
+        "to": "G4.pass",
+        "kind": "gate"
+      },
+      {
+        "from": "G4.pass",
+        "to": "13-C.run",
+        "kind": "gate"
+      },
+      {
+        "from": "1.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "2.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "3.full-accepted",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "4.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "5.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "6.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "7.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "8.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "9.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "10.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "11.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "12.released",
+        "to": "13-C.run",
+        "kind": "start"
+      },
+      {
+        "from": "13-C.run",
+        "to": "13-C.accepted",
+        "kind": "node"
+      },
+      {
+        "from": "13-C.accepted",
+        "to": "G5.pass",
+        "kind": "gate"
+      }
+    ]
+  }
+}
