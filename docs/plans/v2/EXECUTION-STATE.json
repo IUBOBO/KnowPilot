@@ -61,6 +61,10 @@
           "targeted.json": "015c6051f4aa84bf25d82b588e6805bf1cf26047c0bfb0b2ba727371c44dbe51",
           "blockers.json": "af210c582f89fd021bf7a8a835688570205f4ac403f09bff7989d9d67cbac324",
           "commands.json": "9eb1fd525df10b0ac92348bcb9675b42bc9df95826893e2c38a12fa6af5ec25a"
+        },
+        "last_audit": {
+          "verified_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
+          "evidence_hashes_match": true
         }
       },
       "blockers": [],
@@ -68,21 +72,57 @@
     },
     {
       "id": "G1",
-      "status": "awaiting_merge_approval",
+      "status": "blocked",
       "report": "docs/plans/v2/gates/G1.md",
       "merge_sha": null,
       "acceptance": {
-        "status": "pending",
+        "status": "blocked",
         "reviewer": null,
         "evidence": [
           "docs/plans/v2/gates/G1.md"
         ],
-        "reason": "Both feature PRs passed 13-B pre-merge scope and independent reviews. Both post-merge gates require human approval and verification."
+        "reason": "Historical cloud consent scope for ledger fields requires user approval."
       },
       "blockers": [
         "1.released",
         "2.released"
-      ]
+      ],
+      "hold_reason": "Historical cloud consent scope for ledger fields requires user approval.",
+      "legacy_next_actions_recheck": {
+        "runs": [
+          {
+            "target_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
+            "source_sha": "de5c94263e66af7417b8d0db4fcf5b364dd5408e",
+            "original_exit": 1,
+            "assertions_passed": 28,
+            "assertions_total": 30,
+            "original_sha256": "154b0736a7ed2a2b4e79720775f5849ce47c6b8a9e630b9334c1247955e2b9b1",
+            "probe_sha256": "e683b92908a8df4c8bb6447545d0019508c68f1d1a1e5321a50c3c5341e96f6c"
+          },
+          {
+            "target_sha": "88a3a9cbd3c508789c3973afa674c012278c0dd0",
+            "source_sha": "d96c43834794beffc9663f38fcf2b5ff5ded341c",
+            "original_exit": 1,
+            "assertions_passed": 28,
+            "assertions_total": 30,
+            "original_sha256": "6ffb9540d30d89d9f5bba08ee6c709a9f44e09ce7e6b6d38005a114b8050f557",
+            "probe_sha256": "97b98f00b4f85da206b68d3c75099b2fd0d6ffa33663bd7a55f5b4908147d9c0"
+          },
+          {
+            "target_sha": "a04516f9b185712ad9fd933ee987894d7f9725d3",
+            "source_sha": "5378c9b1bf1e3e0482966c70431f3a98dfd6174f",
+            "original_exit": 1,
+            "assertions_passed": 28,
+            "assertions_total": 30,
+            "original_sha256": "d3a24f655eefa0ee89ccf7dddde3301fe2227b0cad89f1fa5cea07dc48f7fa2b",
+            "probe_sha256": "6a0f52e2d2957c907545fda39f1633ed5335bea22bb7ebbef5ef8b57726605da"
+          }
+        ],
+        "patent_assertion": "inherited_assertion_mismatch",
+        "thesis_field": "inherited_cloud_consent_scope_pending_approval",
+        "raw_logs_published": false,
+        "real_model": "not_run"
+      }
     },
     {
       "id": "G2",
@@ -137,7 +177,7 @@
     {
       "issue": 1,
       "stable_id": "V2-01",
-      "state": "awaiting_merge_approval",
+      "state": "blocked",
       "owner_role": "Retrieval/backend",
       "owner": "g1_retrieval",
       "branch": "feat/v2-01-retrieval-contract",
@@ -154,12 +194,13 @@
       "head_sha": "88a3a9cbd3c508789c3973afa674c012278c0dd0",
       "merge_sha": null,
       "acceptance": {
-        "status": "premerge_passed",
+        "status": "blocked",
         "evidence": [
           "docs/plans/v2/V2-01.md",
           "docs/plans/v2/gates/G1.md"
         ],
-        "reviewer": "independent_spec_and_standards"
+        "reviewer": "independent_spec_and_standards",
+        "reason": "Historical cloud consent scope for ledger fields requires user approval."
       },
       "release_node": "1.released",
       "preparation": {
@@ -174,7 +215,7 @@
     {
       "issue": 2,
       "stable_id": "V2-02",
-      "state": "awaiting_merge_approval",
+      "state": "blocked",
       "owner_role": "Frontend/chat",
       "owner": "g1_ask",
       "branch": "feat/v2-02-ask-shell",
@@ -191,12 +232,13 @@
       "head_sha": "a04516f9b185712ad9fd933ee987894d7f9725d3",
       "merge_sha": null,
       "acceptance": {
-        "status": "premerge_passed",
+        "status": "blocked",
         "evidence": [
           "docs/plans/v2/V2-02.md",
           "docs/plans/v2/gates/G1.md"
         ],
-        "reviewer": "independent_spec_and_standards"
+        "reviewer": "independent_spec_and_standards",
+        "reason": "Historical cloud consent scope for ledger fields requires user approval."
       },
       "release_node": "2.released",
       "preparation": {
@@ -408,9 +450,7 @@
       "worktree_alias": "KnowPilot-V2-G0",
       "completed_nodes": [
         "13-A.run",
-        "13-A.accepted",
-        "13-B.1.pre",
-        "13-B.2.pre"
+        "13-A.accepted"
       ],
       "prs": [
         16
@@ -473,7 +513,7 @@
             "1": {
               "pr": 17,
               "pre": {
-                "status": "passed",
+                "status": "review_blocked",
                 "pull_request_head": "88a3a9cbd3c508789c3973afa674c012278c0dd0",
                 "tested_local_sha": "d96c43834794beffc9663f38fcf2b5ff5ded341c",
                 "verified_tree_sha": "99c39c33c780893eac73291173bfb24d85427cd3",
@@ -491,7 +531,9 @@
                   "targeted.json": "57a1c40d7a98800415fb5a3431a2e661071d619b1d43184e047e882bb147547c",
                   "blockers.json": "92f4ddfb324dc340e70b514a8e938e5e906da8424a21f9bd3d82810b2ae27cb1",
                   "ranking-summary.json": "0d67c66e3f0da1d2da2db77beb2cbc3253776b6497a53aedf62bf9d697534a48"
-                }
+                },
+                "engineering_result": "passed",
+                "blocker": "legacy_cloud_consent_scope_pending_approval"
               },
               "post": {
                 "status": "not_run",
@@ -501,7 +543,7 @@
             "2": {
               "pr": 18,
               "pre": {
-                "status": "passed",
+                "status": "review_blocked",
                 "pull_request_head": "a04516f9b185712ad9fd933ee987894d7f9725d3",
                 "tested_local_sha": "5378c9b1bf1e3e0482966c70431f3a98dfd6174f",
                 "verified_tree_sha": "e5dd9ec2c9e54aea8f455ff7e5bb75ae54ea59a4",
@@ -518,7 +560,9 @@
                   "commands.json": "cfcda67cb70c1561bad11cdb1259b90293fac2213e544e3f222369ec1bd1acac",
                   "targeted.json": "974e5e51e0ca0ce1f311d3e326c9d2ac6dbe38f9988a0dc6362de0571c61aa1e",
                   "blockers.json": "dc3c475aeff205d274473c3c2cfc4629a1827b91d80082e1198c1c51313bed08"
-                }
+                },
+                "engineering_result": "passed",
+                "blocker": "legacy_cloud_consent_scope_pending_approval"
               },
               "post": {
                 "status": "not_run",
