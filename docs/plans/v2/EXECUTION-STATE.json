@@ -133,15 +133,39 @@
     },
     {
       "id": "G2",
-      "status": "planned",
+      "status": "in_progress",
       "report": "docs/plans/v2/gates/G2.md",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
+        "status": "pending",
         "reviewer": null,
-        "evidence": []
+        "evidence": [
+          "docs/plans/v2/gates/G2.md"
+        ]
       },
-      "blockers": []
+      "blockers": [],
+      "baseline_sha": "37556f2f894935a25c56c26003dbd265cdec13db",
+      "wave_1": {
+        "scope": [
+          3,
+          4,
+          6
+        ],
+        "g1_dependencies_verified": true,
+        "contract": {
+          "state": "frozen",
+          "node": "3-4.contract-frozen",
+          "local_verified_commit_sha": "036eca7285e465ca7cb296ac666922da92edd311",
+          "version": 1,
+          "evidence": "docs/plans/v2/contracts/EVIDENCE-OPEN.md",
+          "fixture_assertions_passed": 9,
+          "confirmed_by": [
+            "g2_blocks",
+            "g2_reader"
+          ]
+        },
+        "g1_docs_pr": 19
+      }
     },
     {
       "id": "G3",
@@ -264,40 +288,46 @@
     {
       "issue": 3,
       "stable_id": "V2-03",
-      "state": "planned",
+      "state": "in_progress",
       "owner_role": "Answer composer",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
+      "owner": "g2_blocks",
+      "branch": "codex/v2-03-answer-blocks",
+      "worktree_alias": "KnowPilot-V2-03",
+      "completed_nodes": [
+        "3.ready"
+      ],
       "prs": [],
-      "head_sha": null,
+      "head_sha": "036eca7285e465ca7cb296ac666922da92edd311",
       "merge_sha": null,
       "acceptance": {
         "status": "not_run",
         "evidence": [],
         "reviewer": null
       },
-      "release_node": "3.full-accepted"
+      "release_node": "3.full-accepted",
+      "base_sha": "37556f2f894935a25c56c26003dbd265cdec13db"
     },
     {
       "issue": 4,
       "stable_id": "V2-04",
-      "state": "planned",
+      "state": "in_progress",
       "owner_role": "Evidence UI",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
+      "owner": "g2_reader",
+      "branch": "codex/v2-04-evidence-viewer",
+      "worktree_alias": "KnowPilot-V2-04",
+      "completed_nodes": [
+        "4.ready"
+      ],
       "prs": [],
-      "head_sha": null,
+      "head_sha": "036eca7285e465ca7cb296ac666922da92edd311",
       "merge_sha": null,
       "acceptance": {
         "status": "not_run",
         "evidence": [],
         "reviewer": null
       },
-      "release_node": "4.released"
+      "release_node": "4.released",
+      "base_sha": "37556f2f894935a25c56c26003dbd265cdec13db"
     },
     {
       "issue": 5,
@@ -321,21 +351,24 @@
     {
       "issue": 6,
       "stable_id": "V2-06",
-      "state": "ready",
+      "state": "in_progress",
       "owner_role": "Trace/telemetry",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
+      "owner": "g2_process",
+      "branch": "codex/v2-06-retrieval-process",
+      "worktree_alias": "KnowPilot-V2-06",
+      "completed_nodes": [
+        "6.ready"
+      ],
       "prs": [],
-      "head_sha": null,
+      "head_sha": "37556f2f894935a25c56c26003dbd265cdec13db",
       "merge_sha": null,
       "acceptance": {
         "status": "not_run",
         "evidence": [],
         "reviewer": null
       },
-      "release_node": "6.released"
+      "release_node": "6.released",
+      "base_sha": "37556f2f894935a25c56c26003dbd265cdec13db"
     },
     {
       "issue": 7,
