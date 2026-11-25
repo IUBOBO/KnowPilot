@@ -1,0 +1,133 @@
+.ask-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.ask-workspace-with-reader {
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, min(30%, 22rem));
+}
+
+.ask-conversation,
+.ask-answer-article,
+.ask-evidence-reader {
+  min-width: 0;
+}
+
+.ask-answer-article {
+  padding-inline: clamp(12px, 2.2vw, 28px);
+}
+
+.ask-answer-title {
+  margin: 0 0 14px;
+}
+
+.ask-answer-article .ask-answer-copy {
+  line-height: 1.8;
+}
+
+.ask-answer-copy > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ask-answer-copy .ask-answer-table {
+  table-layout: fixed;
+}
+
+.ask-answer-copy .ask-answer-code,
+.ask-answer-math-display {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.ask-answer-copy .ask-answer-code {
+  padding: 12px 15px;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.ask-answer-copy .ask-answer-code code {
+  display: block;
+  padding: 0;
+  background: transparent;
+  overflow-wrap: normal;
+}
+
+.ask-answer-math-display {
+  padding: 10px 14px;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+.ask-answer-math-inline {
+  display: inline-block;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  vertical-align: middle;
+}
+
+.ask-answer-math-inline:focus-visible,
+.ask-answer-code:focus-visible,
+.ask-answer-math-display:focus-visible,
+.ask-reader-header button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.ask-evidence-reader {
+  position: sticky;
+  top: 5.25rem;
+  max-height: calc(100dvh - 6.25rem);
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.ask-reader-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.ask-reader-header h2 {
+  margin: 0;
+}
+
+.ask-evidence-reader .drawer-lead {
+  margin-top: 0;
+  font-size: .8125rem;
+}
+
+.ask-evidence-reader .card.hit {
+  overflow-wrap: anywhere;
+  padding: 11px;
+  margin-bottom: 9px;
+}
+
+.ask-evidence-reader .hit-head {
+  padding-inline-end: 0;
+}
+
+.ask-evidence-reader .side-link {
+  margin-inline-start: 0;
+}
+
+@media (max-width: 520px) {
+  .ask-conversation .ask-form > button {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .ask-conversation .cite-pop {
+    max-width: min(66vw, 16rem);
+  }
+}
