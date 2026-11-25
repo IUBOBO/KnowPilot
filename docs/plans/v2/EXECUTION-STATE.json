@@ -46,34 +46,90 @@
   "stages": [
     {
       "id": "G0",
-      "status": "awaiting_review",
+      "status": "passed",
       "report": "docs/plans/v2/gates/G0.md",
-      "merge_sha": null,
+      "merge_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
       "acceptance": {
-        "status": "pending",
-        "reviewer": null,
+        "status": "passed",
+        "reviewer": "user",
         "evidence": [
           "docs/plans/v2/gates/G0.md"
         ],
-        "reason": "GC-10 and GC-12 passed offline after the approved evaluator correction. PR #16 requires human merge approval, post-merge regression, and user sign-off before G0 release.",
-        "model_checks": "not_run"
+        "reason": "User approved G0 offline acceptance conditional on post-merge regression; all deterministic checks passed on the verified merge SHA.",
+        "model_checks": "not_run",
+        "post_merge_report_hashes": {
+          "targeted.json": "015c6051f4aa84bf25d82b588e6805bf1cf26047c0bfb0b2ba727371c44dbe51",
+          "blockers.json": "af210c582f89fd021bf7a8a835688570205f4ac403f09bff7989d9d67cbac324",
+          "commands.json": "9eb1fd525df10b0ac92348bcb9675b42bc9df95826893e2c38a12fa6af5ec25a"
+        },
+        "last_audit": {
+          "verified_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
+          "evidence_hashes_match": true
+        }
       },
-      "blockers": [
-        "13-A.accepted"
-      ],
+      "blockers": [],
       "baseline_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51"
     },
     {
       "id": "G1",
-      "status": "planned",
+      "status": "passed",
       "report": "docs/plans/v2/gates/G1.md",
-      "merge_sha": null,
+      "merge_sha": "37556f2f894935a25c56c26003dbd265cdec13db",
       "acceptance": {
-        "status": "not_run",
-        "reviewer": null,
-        "evidence": []
+        "status": "passed",
+        "reviewer": "coordinator",
+        "evidence": [
+          "docs/plans/v2/gates/G1.md"
+        ],
+        "reason": "User approved keeping existing authorized grades. Both merge SHAs passed the G1 regression scope and independent reviews.",
+        "model_checks": "not_run"
       },
-      "blockers": []
+      "blockers": [],
+      "legacy_next_actions_recheck": {
+        "runs": [
+          {
+            "target_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
+            "source_sha": "de5c94263e66af7417b8d0db4fcf5b364dd5408e",
+            "original_exit": 1,
+            "assertions_passed": 28,
+            "assertions_total": 30,
+            "original_sha256": "154b0736a7ed2a2b4e79720775f5849ce47c6b8a9e630b9334c1247955e2b9b1",
+            "probe_sha256": "e683b92908a8df4c8bb6447545d0019508c68f1d1a1e5321a50c3c5341e96f6c"
+          },
+          {
+            "target_sha": "88a3a9cbd3c508789c3973afa674c012278c0dd0",
+            "source_sha": "d96c43834794beffc9663f38fcf2b5ff5ded341c",
+            "original_exit": 1,
+            "assertions_passed": 28,
+            "assertions_total": 30,
+            "original_sha256": "6ffb9540d30d89d9f5bba08ee6c709a9f44e09ce7e6b6d38005a114b8050f557",
+            "probe_sha256": "97b98f00b4f85da206b68d3c75099b2fd0d6ffa33663bd7a55f5b4908147d9c0"
+          },
+          {
+            "target_sha": "a04516f9b185712ad9fd933ee987894d7f9725d3",
+            "source_sha": "5378c9b1bf1e3e0482966c70431f3a98dfd6174f",
+            "original_exit": 1,
+            "assertions_passed": 28,
+            "assertions_total": 30,
+            "original_sha256": "d3a24f655eefa0ee89ccf7dddde3301fe2227b0cad89f1fa5cea07dc48f7fa2b",
+            "probe_sha256": "6a0f52e2d2957c907545fda39f1633ed5335bea22bb7ebbef5ef8b57726605da"
+          }
+        ],
+        "patent_assertion": "inherited_assertion_mismatch",
+        "thesis_field": "historical_behavior_retained_with_user_approval",
+        "raw_logs_published": false,
+        "real_model": "not_run",
+        "approval_scope": "Retain existing permission-scoped query and presentation of grades. The original two failed assertions remain recorded.",
+        "follow_up": "Keep field authorization, clarify cloud notice for ledger fields, and revise tests to verify role labeling and allowed/denied fields after policy review."
+      },
+      "feature_merge_shas": {
+        "1": "737312dd43dbd5d1e8d84badc9cb871919376c4b",
+        "2": "37556f2f894935a25c56c26003dbd265cdec13db"
+      },
+      "next_phase_ready_nodes": [
+        "3-4.contract-frozen",
+        "6.ready"
+      ]
     },
     {
       "id": "G2",
@@ -128,52 +184,82 @@
     {
       "issue": 1,
       "stable_id": "V2-01",
-      "state": "blocked",
+      "state": "merged",
       "owner_role": "Retrieval/backend",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
-      "prs": [],
-      "head_sha": null,
-      "merge_sha": null,
+      "owner": "g1_retrieval",
+      "branch": "feat/v2-01-retrieval-contract",
+      "worktree_alias": "KnowPilot-V2-01",
+      "completed_nodes": [
+        "1.ready",
+        "1.N1",
+        "1.N2",
+        "1.N3",
+        "1.merged",
+        "1.released"
+      ],
+      "prs": [
+        17
+      ],
+      "head_sha": "88a3a9cbd3c508789c3973afa674c012278c0dd0",
+      "merge_sha": "737312dd43dbd5d1e8d84badc9cb871919376c4b",
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "passed",
+        "evidence": [
+          "docs/plans/v2/V2-01.md",
+          "docs/plans/v2/gates/G1.md"
+        ],
+        "reviewer": "independent_spec_and_standards",
+        "reason": "Four Issue checks, independent revisions and exact-SHA 13-B post verified."
       },
       "release_node": "1.released",
       "preparation": {
-        "plan_checked_at": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
+        "plan_checked_at": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
         "proposed_branch": "feat/v2-01-retrieval-contract",
         "proposed_worktree_alias": "KnowPilot-V2-01",
-        "release_gate": "G0.pass"
-      }
+        "release_gate": "G0.pass",
+        "released_by": "G0.pass"
+      },
+      "base_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5"
     },
     {
       "issue": 2,
       "stable_id": "V2-02",
-      "state": "blocked",
+      "state": "merged",
       "owner_role": "Frontend/chat",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
-      "prs": [],
-      "head_sha": null,
-      "merge_sha": null,
+      "owner": "g1_ask",
+      "branch": "feat/v2-02-ask-shell",
+      "worktree_alias": "KnowPilot-V2-02",
+      "completed_nodes": [
+        "2.ready",
+        "2.N1",
+        "2.N2",
+        "2.N3",
+        "2.merged",
+        "2.released"
+      ],
+      "prs": [
+        18
+      ],
+      "head_sha": "5795f07d6c186fe5e5dcb3b379d14a9da578d71e",
+      "merge_sha": "37556f2f894935a25c56c26003dbd265cdec13db",
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "passed",
+        "evidence": [
+          "docs/plans/v2/V2-02.md",
+          "docs/plans/v2/gates/G1.md"
+        ],
+        "reviewer": "independent_spec_and_standards",
+        "reason": "Four Issue checks, independent revisions and exact-SHA 13-B post verified."
       },
       "release_node": "2.released",
       "preparation": {
-        "plan_checked_at": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
+        "plan_checked_at": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
         "proposed_branch": "feat/v2-02-ask-shell",
         "proposed_worktree_alias": "KnowPilot-V2-02",
-        "release_gate": "G0.pass"
-      }
+        "release_gate": "G0.pass",
+        "released_by": "G0.pass"
+      },
+      "base_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5"
     },
     {
       "issue": 3,
@@ -235,7 +321,7 @@
     {
       "issue": 6,
       "stable_id": "V2-06",
-      "state": "planned",
+      "state": "ready",
       "owner_role": "Trace/telemetry",
       "owner": null,
       "branch": null,
@@ -368,33 +454,39 @@
     {
       "issue": 13,
       "stable_id": "V2-13",
-      "state": "awaiting_review",
+      "state": "in_progress",
       "owner_role": "Quality/eval",
       "owner": "coordinator",
       "branch": "eval/v2-g0-evidence",
       "worktree_alias": "KnowPilot-V2-G0",
       "completed_nodes": [
-        "13-A.run"
+        "13-A.run",
+        "13-A.accepted",
+        "13-B.1.pre",
+        "13-B.1.post",
+        "13-B.2.pre",
+        "13-B.2.post"
       ],
       "prs": [
         16
       ],
-      "head_sha": "d400d93d2821e68a0843b0595688d3d7f186bb76",
-      "head_sha_scope": "tested_evaluation_code_commit",
-      "merge_sha": null,
+      "head_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
+      "head_sha_scope": "g0_postmerge_tested_commit",
+      "merge_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
       "acceptance": {
         "status": "pending",
         "evidence": [
           "docs/plans/v2/gates/G0.md",
           "docs/plans/v2/V2-13.md"
         ],
-        "reviewer": null
+        "reviewer": null,
+        "reason": "13-A offline accepted. 13-B and 13-C remain open."
       },
       "release_node": "G5.pass",
       "phases": {
         "13-A": {
-          "state": "awaiting_review",
-          "acceptance": "pending",
+          "state": "accepted",
+          "acceptance": "passed",
           "tested_sha": "d400d93d2821e68a0843b0595688d3d7f186bb76",
           "offline_report_sha256": "c2008948503cc7770c881dbf1df560242e180556c3340ba4ed02570e93081d55",
           "fixture": "5d4ca679bfc6",
@@ -421,11 +513,116 @@
             ],
             "not_run_checks": 5
           },
-          "post_merge_regression": "pending"
+          "post_merge_regression": "passed",
+          "reviewer": "user",
+          "post_merge_tested_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
+          "post_merge_report_hashes": {
+            "targeted.json": "015c6051f4aa84bf25d82b588e6805bf1cf26047c0bfb0b2ba727371c44dbe51",
+            "blockers.json": "af210c582f89fd021bf7a8a835688570205f4ac403f09bff7989d9d67cbac324",
+            "commands.json": "9eb1fd525df10b0ac92348bcb9675b42bc9df95826893e2c38a12fa6af5ec25a"
+          }
         },
         "13-B": {
-          "state": "planned",
-          "per_feature": {}
+          "state": "in_progress",
+          "per_feature": {
+            "1": {
+              "pr": 17,
+              "pre": {
+                "status": "passed",
+                "pull_request_head": "88a3a9cbd3c508789c3973afa674c012278c0dd0",
+                "tested_local_sha": "d96c43834794beffc9663f38fcf2b5ff5ded341c",
+                "verified_tree_sha": "99c39c33c780893eac73291173bfb24d85427cd3",
+                "commands_passed": 14,
+                "commands_total": 15,
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                },
+                "model_checks": "not_run",
+                "evidence_hashes": {
+                  "commands.json": "66bd1612612822f6c2dd6e45e8be71b9ce42928f222da46ea9129da931a7baf7",
+                  "targeted.json": "57a1c40d7a98800415fb5a3431a2e661071d619b1d43184e047e882bb147547c",
+                  "blockers.json": "92f4ddfb324dc340e70b514a8e938e5e906da8424a21f9bd3d82810b2ae27cb1",
+                  "ranking-summary.json": "0d67c66e3f0da1d2da2db77beb2cbc3253776b6497a53aedf62bf9d697534a48"
+                },
+                "engineering_result": "passed"
+              },
+              "post": {
+                "status": "passed",
+                "merge_sha": "737312dd43dbd5d1e8d84badc9cb871919376c4b",
+                "tested_sha": "737312dd43dbd5d1e8d84badc9cb871919376c4b",
+                "model_checks": "not_run",
+                "commands_total": 15,
+                "commands_passed": 14,
+                "evidence_hashes": {
+                  "commands.json": "c3ec6b6276f65d3e250a3c92f25bdc6ccf63ce650e304884acaf42a5bd1d699d",
+                  "targeted.json": "30e1443d4cc9e17f4fb4179a01dbbad54d0691d9de08317a869f415af46669d5",
+                  "blockers.json": "7f3e9f1189d37c5e6d88f3437c6151f6d7467a267409f569c32794126fb8b657",
+                  "ranking-summary.json": "36e666ad10d592db29c516564e65758f46cb9595b721efd0c36adc46c79b5379"
+                },
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              }
+            },
+            "2": {
+              "pr": 18,
+              "pre": {
+                "status": "passed",
+                "pull_request_head": "a04516f9b185712ad9fd933ee987894d7f9725d3",
+                "tested_local_sha": "5378c9b1bf1e3e0482966c70431f3a98dfd6174f",
+                "verified_tree_sha": "e5dd9ec2c9e54aea8f455ff7e5bb75ae54ea59a4",
+                "commands_passed": 11,
+                "commands_total": 12,
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                },
+                "model_checks": "not_run",
+                "evidence_hashes": {
+                  "commands.json": "cfcda67cb70c1561bad11cdb1259b90293fac2213e544e3f222369ec1bd1acac",
+                  "targeted.json": "974e5e51e0ca0ce1f311d3e326c9d2ac6dbe38f9988a0dc6362de0571c61aa1e",
+                  "blockers.json": "dc3c475aeff205d274473c3c2cfc4629a1827b91d80082e1198c1c51313bed08"
+                },
+                "engineering_result": "passed",
+                "sync_target_sha": "5795f07d6c186fe5e5dcb3b379d14a9da578d71e",
+                "sync_tested_checkout_sha": "b2794a249960950fb4a4bbf9f03fa0fb76e27d7f",
+                "sync_report_hashes": {
+                  "commands.json": "f4d63b7a4ec0fc363a583fce448f8b81f966babea84fadc45357fa0ee8dc4efe",
+                  "targeted.json": "0721955a94114cded7571129ba33bf8634e1db9fce4ad7a339e3ccbe0ce49241",
+                  "blockers.json": "7c369c5282d1f16e648080c56f624d088b9cbdb2181f7fee78dbac344da49a20",
+                  "ranking-summary.json": "3619c982146cff86cee50cd12a440daf02fc9c996a6dac251780a15f5615b6ec"
+                }
+              },
+              "post": {
+                "status": "passed",
+                "merge_sha": "37556f2f894935a25c56c26003dbd265cdec13db",
+                "tested_sha": "37556f2f894935a25c56c26003dbd265cdec13db",
+                "model_checks": "not_run",
+                "commands_total": 19,
+                "commands_passed": 18,
+                "evidence_hashes": {
+                  "commands.json": "9612449b5482efbf4e31c913603401e2c7bf229ab991bcceb0e3fe9828919e75",
+                  "targeted.json": "c353415db2422d73a6cc5a528f120ddac2230a00cc8309bc55e7075a35566fde",
+                  "blockers.json": "0433414f2a5e5473b9e1a84db1d0aafb7e5233ad250d60d8ab5a29c5fd7fa2d3",
+                  "ranking-summary.json": "213967f3e84e12bfbeff0c075370aec11a7ff58c3804422a94aad36bae6ee1d8"
+                },
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              }
+            }
+          }
         },
         "13-C": {
           "state": "planned",
@@ -433,5 +630,6 @@
         }
       }
     }
-  ]
+  ],
+  "development_baseline_sha": "37556f2f894935a25c56c26003dbd265cdec13db"
 }
