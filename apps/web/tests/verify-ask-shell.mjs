@@ -130,7 +130,9 @@ const server = createServer(async (request, response) => {
   });
   if (pathname === '/api/v1/search' && searchParams.get('contractVersion') === '1') return json(response, {
     version: 1, hits: [{ kind: 'document', documentId: doc.id, chunkId: chunk.id,
-      documentTitle: doc.title, sourceVersion: '1', excerpt: citation.quote, segments: [{ text: citation.quote, hit: true }] }],
+      documentTitle: doc.title, material: doc.material, page: chunk.page, sectionPath: chunk.sectionPath,
+      sourceVersion: '1', excerpt: citation.quote, segments: [{ text: citation.quote, hit: true }] }],
+    diagnostics: [],
   });
   if (pathname === '/api/v1/code-assets/fixture-dataset/evidence') return json(response, dataset);
   if (pathname.endsWith('/review')) return json(response, {

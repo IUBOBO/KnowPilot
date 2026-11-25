@@ -120,19 +120,26 @@ export function searchDocumentTitles(
   db: Db,
   keyword: string,
   limit: number,
+  material?: Material,
+  documentId?: string,
 ): DocumentTitleHit[] {
   // 转义规则与 submissions/repo.ts 同源：`%` / `_` / `\` 不转义就会把
   // "100%_实验" 变成通配符。
   const like = `%${keyword.replace(/[\\%_]/g, (m) => `\\${m}`)}%`;
+  const filters = [
+    material === undefined ? '' : 'AND d.material = ?',
+    documentId === undefined ? '' : 'AND d.id = ?',
+  ].join(' ');
+  const params = [material, documentId].filter((value) => value !== undefined);
   const rows = db
     .prepare(
       `SELECT d.id, d.material, d.title,
         (SELECT c.id FROM doc_chunks c WHERE c.doc_id = d.id ORDER BY c.ordinal LIMIT 1) AS first_chunk_id
         FROM documents d
-        WHERE d.title LIKE ? ESCAPE '\\' OR d.file_name LIKE ? ESCAPE '\\'
+        WHERE (d.title LIKE ? ESCAPE '\\' OR d.file_name LIKE ? ESCAPE '\\') ${filters}
         ORDER BY d.created_at DESC LIMIT ?`,
     )
-    .all(like, like, limit) as unknown as {
+    .all(like, like, ...params, limit) as unknown as {
     id: string;
     material: string;
     title: string;
