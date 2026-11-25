@@ -7,6 +7,17 @@ import { quoteMatchesEvidence } from './citations.ts';
 
 type MetricInput = Extract<ModelAnswerBlock, { kind: 'chart' }>['points'][number];
 
+const datasetLabels = ['数据集', 'Dataset'];
+const settingLabels = ['实验设置', '设置', 'Setting', 'Settings', 'Experimental setting', 'Experimental settings'];
+const protocolLabels = ['统计口径', '口径', 'Protocol', 'Statistical protocol'];
+const reservedMetricLabels = new Set([
+  ...datasetLabels, ...settingLabels, ...protocolLabels, '单位', '计量单位', 'Unit', 'Units',
+].map(fieldKey));
+
+function fieldKey(label: string): string {
+  return label.normalize('NFKC').trim().replace(/\s+/gu, ' ').toLowerCase();
+}
+
 const unverified: AnswerBlock = { kind: 'fallback', reason: 'unverified' };
 const incomparable: AnswerBlock = { kind: 'fallback', reason: 'incomparable' };
 const htmlTag = /<\/?[a-z][^>]*>|<!--/iu;
@@ -33,8 +44,8 @@ function isMeasuredQuote(quote: string, citation: Citation): boolean {
 
 // A copied quote must identify the measurement and its comparison dimensions together.
 function verifiedMetric(point: MetricInput, cite: Citation | undefined): boolean {
-  if (cite === undefined || !quoteMatchesEvidence(point.quote, cite.excerpt) ||
-      !isMeasuredQuote(point.quote, cite)) return false;
+  if (cite === undefined || reservedMetricLabels.has(fieldKey(point.metric)) ||
+      !quoteMatchesEvidence(point.quote, cite.excerpt) || !isMeasuredQuote(point.quote, cite)) return false;
   if ([point.metric, point.dataset, point.unit, point.setting, point.protocol].some(
     (value) => value.trim() === '' || htmlTag.test(value),
   )) return false;
@@ -43,28 +54,38 @@ function verifiedMetric(point: MetricInput, cite: Citation | undefined): boolean
   for (const segment of point.quote.trim().replace(measuredResult, '').split(/[;；\n]/u)) {
     const parts = /^\s*([^:：]+)[:：](.+)$/u.exec(segment);
     if (parts === null) continue;
-    const label = parts[1]!.trim();
+    const label = fieldKey(parts[1]!);
     const values = fields.get(label) ?? new Set<string>();
     values.add(parts[2]!.trim());
     fields.set(label, values);
   }
 
   function matches(labels: string[], value: string): boolean {
-    const entries = labels.flatMap((label) => [...(fields.get(label) ?? [])]);
+    const entries = labels.flatMap((label) => [...(fields.get(fieldKey(label)) ?? [])]);
     return entries.length === 1 && sameLiteral(entries[0]!, value);
   }
 
   return (matches([point.metric.trim()], `${point.value} ${point.unit.trim()}`) ||
           matches([point.metric.trim()], `${point.value}${point.unit.trim()}`)) &&
-    matches(['数据集', 'Dataset'], point.dataset) &&
-    matches(['实验设置', '设置', 'Setting'], point.setting) &&
-    matches(['统计口径', '口径', 'Protocol'], point.protocol);
+    matches(datasetLabels, point.dataset) &&
+    matches(settingLabels, point.setting) &&
+    matches(protocolLabels, point.protocol);
 }
 
-// Dynamic prose is extractive. Keep table rows with their source headers.
-function verifiedText(text: string, ids: readonly string[], citations: ReadonlyMap<string, Citation>): boolean {
+function tableRowMatches(headers: readonly string[], row: string, excerpt: string): boolean {
+  const lines = excerpt.split(/\r?\n/u);
+  return lines.some((_, index) => {
+    const table = readAnswerTable(lines, index);
+    return table !== null && headers.length === table.headers.length &&
+      headers.every((label, column) => sameLiteral(label, table.headers[column]!)) &&
+      table.rows.some(({ line }) => sameLiteral(row, line));
+  });
+}
+
+// Keep a contiguous source for each table and independently ground every displayed citation mark.
+function verifiedTextSources(text: string, ids: readonly string[], citations: ReadonlyMap<string, Citation>): string[] | null {
   const lines = text.split(/\r?\n/u);
-  let hasContent = false;
+  const used = new Set<string>();
   for (let index = 0; index < lines.length;) {
     const table = readAnswerTable(lines, index);
     const end = table?.end ?? index + 1;
@@ -73,21 +94,45 @@ function verifiedText(text: string, ids: readonly string[], citations: ReadonlyM
 
     const unmarked = unit.replace(evidenceMarker(), '');
     const content = (table === null ? unmarked.replace(proseMarker, '') : unmarked).trim();
-    if (content === '') continue;
-    hasContent = true;
     const inlineIds = extractEvidenceIds(unit);
-    const candidateIds = inlineIds.length > 0 ? inlineIds : ids;
-    const source = candidateIds.map((id) => citations.get(id)).find((citation) => citation !== undefined &&
-      (fullSourceLines(content, citation.excerpt) || fullSourceLines(unmarked, citation.excerpt)));
-    if (source === undefined) return false;
+    if (content === '') {
+      if (inlineIds.length > 0) return null;
+      continue;
+    }
 
     const numericLines = content.split(/\r?\n/u)
       .map((line) => table === null ? line : line.replace(/^\s*\|\s*/u, ''))
       .filter((line) => numericExpression.test(line));
-    if (numericLines.length > 0 && (tentativeMetric.test(source.excerpt) ||
-        numericLines.some((line) => !measuredResult.test(line)))) return false;
+    if (numericLines.some((line) => !measuredResult.test(line))) return null;
+
+    const supportsUnit = (id: string) => {
+      const citation = citations.get(id);
+      return citation !== undefined && (numericLines.length === 0 || !tentativeMetric.test(citation.excerpt)) &&
+        (fullSourceLines(content, citation.excerpt) || fullSourceLines(unmarked, citation.excerpt));
+    };
+    if (table === null && inlineIds.length > 0) {
+      if (!inlineIds.every(supportsUnit)) return null;
+      for (const id of inlineIds) used.add(id);
+      continue;
+    }
+
+    const primaryId = ids.find(supportsUnit);
+    if (primaryId === undefined) return null;
+    used.add(primaryId);
+    if (table === null) continue;
+
+    for (const row of table.rows) {
+      const rowText = row.line.replace(evidenceMarker(), '');
+      for (const id of extractEvidenceIds(row.line)) {
+        if (id === primaryId) continue;
+        const citation = citations.get(id);
+        if (citation === undefined || (numericExpression.test(rowText) && tentativeMetric.test(citation.excerpt)) ||
+            !tableRowMatches(table.headers, rowText, citation.excerpt)) return null;
+        used.add(id);
+      }
+    }
   }
-  return hasContent;
+  return used.size === 0 ? null : ids.filter((id) => used.has(id));
 }
 
 function composeBlock(raw: unknown, citations: ReadonlyMap<string, Citation>): AnswerBlock {
@@ -115,9 +160,9 @@ function composeBlock(raw: unknown, citations: ReadonlyMap<string, Citation>): A
   if (evidenceIds.some((id) => !citations.has(id))) return unverified;
   if (kind === 'markdown' || kind === 'summary') {
     if (raw.text.trim() === '' || htmlTag.test(raw.text) ||
-        extractEvidenceIds(raw.text).some((id) => !evidenceIds.includes(id)) ||
-        !verifiedText(raw.text, evidenceIds, citations)) return unverified;
-    return { kind, text: raw.text, evidenceIds };
+        extractEvidenceIds(raw.text).some((id) => !evidenceIds.includes(id))) return unverified;
+    const verified = verifiedTextSources(raw.text, evidenceIds, citations);
+    return verified === null ? unverified : { kind, text: raw.text, evidenceIds: verified };
   }
   if ((kind === 'documents' || kind === 'papers') && evidenceIds.some((id) => {
     const citation = citations.get(id);

@@ -67,6 +67,59 @@ assert.equal(composeAnswerBlocks([
   { kind: 'markdown', text: sourceTableWithMark, evidence_ids: ['E2'] },
 ], cites)?.items[0]?.kind, 'markdown');
 
+const markedTable = sourceTableWithMark.replace('[E2]', '[E1]') + '\n| 核对正文 | 论文丙 [E2] |';
+const secondRow = '| 核对正文 | 论文丙 |';
+const sameHeader = '| 核对项 | 来源 |\n| --- | --- |';
+const mainCitation = { ...doc('E1', '95'), excerpt: [summaryLine, sourceTable, secondRow].join('\n') };
+const unrelatedCitation = { ...doc('E2', '91'), excerpt: '其他材料记载的内容。' };
+const secondCitation = {
+  ...doc('E2', '91'), excerpt: [summaryLine, '引用材料可复查。', sameHeader, secondRow].join('\n'),
+};
+const attributionCases = [
+  { kind: 'summary', text: summaryLine + '[E1][E2]', evidence_ids: ['E1', 'E2'] },
+  { kind: 'markdown', text: markedTable, evidence_ids: ['E1', 'E2'] },
+];
+assert.deepEqual(
+  composeAnswerBlocks(attributionCases, [mainCitation, unrelatedCitation])?.items.map(({ kind }) => kind),
+  ['fallback', 'fallback'],
+);
+assert.deepEqual(
+  composeAnswerBlocks(attributionCases, [mainCitation, secondCitation])?.items.map(({ kind }) => kind),
+  ['summary', 'markdown'],
+);
+assert.equal(composeAnswerBlocks([attributionCases[1]], [
+  mainCitation, { ...secondCitation, excerpt: '| 核对项 | 参考 |\n| --- | --- |\n' + secondRow },
+])?.items[0]?.kind, 'fallback');
+assert.deepEqual(composeAnswerBlocks([
+  { kind: 'summary', text: summaryLine + ' [E1]\n引用材料可复查。 [E2]', evidence_ids: ['E1', 'E2'] },
+  { kind: 'summary', text: summaryLine + ' [E1]', evidence_ids: ['E1', 'E2'] },
+  { kind: 'summary', text: summaryLine + ' [E1]\n[E2]', evidence_ids: ['E1', 'E2'] },
+], [mainCitation, { ...unrelatedCitation, excerpt: '引用材料可复查。' }])?.items, [
+  { kind: 'summary', text: summaryLine + ' [E1]\n引用材料可复查。 [E2]', evidenceIds: ['E1', 'E2'] },
+  { kind: 'summary', text: summaryLine + ' [E1]', evidenceIds: ['E1'] },
+  { kind: 'fallback', reason: 'unverified' },
+]);
+assert.equal(composeAnswerBlocks([
+  { kind: 'summary', text: metricText('95') + ' [E1][E2]', evidence_ids: ['E1', 'E2'] },
+], [doc('E1', '95'), { ...doc('E2', '91'), excerpt: '仅为验收门槛。\n' + metricText('95') }])?.items[0]?.kind, 'fallback');
+
+const storedSetting = '实测结果：实际性能：无可用数据；数据集：合成数据集；实验设置：95%；统计口径：宏平均';
+const actualPerformance = metricText('95').replace('准确率', '实际性能');
+const performancePoint = { ...point('E1', '95'), metric: '实际性能', quote: actualPerformance };
+for (const label of ['实验设置', 'Ｓｅｔｔｉｎｇ']) {
+  const excerpt = storedSetting.replace('实验设置', label);
+  const examples = [doc('E1', '95'), doc('E2', '95')].map((cite) => ({ ...cite, excerpt }));
+  const points = examples.map(({ id }) => ({
+    ...point(id, '95'), metric: label, setting: '95%', quote: excerpt,
+  }));
+  assert.deepEqual(composeAnswerBlocks([{ kind: 'chart', points }], examples)?.items,
+    [{ kind: 'fallback', reason: 'unverified' }]);
+}
+assert.equal(composeAnswerBlocks([
+  { kind: 'comparison', points: [performancePoint, { ...performancePoint, evidence_id: 'E2' }] },
+], [doc('E1', '95'), doc('E2', '95')].map((cite) => ({ ...cite, excerpt: actualPerformance })))?.items[0]?.kind,
+'comparison');
+
 const cases = [
   { kind: 'documents', evidence_ids: ['E999'] },
   { kind: 'documents', evidence_ids: ['E1'], documentTitle: '客户端不得接纳的伪造标题' },
