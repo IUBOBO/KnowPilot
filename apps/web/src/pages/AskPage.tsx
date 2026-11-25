@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import {
   ASK_HISTORY_LIMIT,
   evidenceMarker,
@@ -10,14 +10,17 @@ import {
   type DocumentSummary,
   type ListDocumentsResponse,
   type Material,
+  type OpenEvidence,
 } from '@knowpilot/shared';
 import { ApiError, apiGet, apiPostSse, isAbort, toApiError } from '../api.ts';
 import { ConsentBar } from '../components/ConsentBar.tsx';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
+import { EvidenceViewer, useEvidenceViewer } from '../components/evidence/EvidenceViewer.tsx';
+import { answerEvidenceSources } from '../components/evidence/evidence-reader.ts';
 import { NavGlyph } from '../nav-icons.tsx';
 import { historyForAsk, readAskSession, writeAskSession, type AskActivity, type AskTabTurn } from '../ask-session.ts';
 import { AnswerBody } from './ask/AnswerMarkdown.tsx';
-import { AnswerSources } from './ask/AnswerSources.tsx';
+import { AnswerSources, sourceHref } from './ask/AnswerSources.tsx';
 import { AnswerNotes, AskAnswer } from './ask/AskAnswer.tsx';
 import { AskComposer, AskHistory } from './ask/AskConversation.tsx';
 import { activityLabel, appendProcess, LiveElapsedTime, QueryDetails, type AskProcessProps, type TimelineStep } from './ask/AskProcess.tsx';
@@ -45,7 +48,7 @@ const NO_DRAFT_CITATIONS: ReadonlyMap<string, Citation> = new Map();
  *   用户必须能自己翻开原文核对。
  */
 export interface AskPageSlots {
-  renderAnswerBlocks?: (props: { response: AskResponse }) => ReactNode;
+  renderAnswerBlocks?: (props: { response: AskResponse; onOpenEvidence: OpenEvidence }) => ReactNode;
   renderProcess?: (props: AskProcessProps) => ReactNode;
   renderEvidenceReader?: (props: { citations: readonly Citation[] }) => ReactNode;
 }
@@ -379,7 +382,21 @@ export function AskPage({ active, scope, onActivity, slots }: {
     (result?.answer.citations ?? []).map((c) => [c.id, c]),
   );
   const sources = result?.answer.citations ?? [];
+  const catalog = useMemo(
+    () => !active || result === null ? [] : answerEvidenceSources(result.runId, result.answer.citations, sourceHref),
+    [active, result],
+  );
+  const evidence = useEvidenceViewer(catalog, JSON.stringify([active, scope, result?.runId]));
+  const openEvidence: OpenEvidence = (request) => {
+    if (!evidence.onOpenEvidence(request)) return false;
+    setDrawerOpen(false);
+    return true;
+  };
   const readerOpen = active && drawerOpen && sources.length > 0;
+  function toggleSources() {
+    evidence.reader?.onClose();
+    setDrawerOpen((open) => !open);
+  }
   // 只有服务端明确说"可续跑"时才给按钮：任务可能已过期、已被别的请求接管、
   // 或本次是正常结束 —— 这些都由 resumeAvailable 表达，前端不自行推断。
   const resumeTaskId =
@@ -392,14 +409,20 @@ export function AskPage({ active, scope, onActivity, slots }: {
         showUnavailable: true };
 
   return (
-    <AskWorkspace reader={{
+    <EvidenceViewer reader={evidence.reader}><AskWorkspace reader={{
       open: readerOpen,
       title: `来源（${sources.length}）`,
       onClose: closeReader,
       triggerRef: sourceButtonRef,
       children: readerOpen
         ? (slots?.renderEvidenceReader === undefined
-          ? <AnswerSources citations={sources} />
+          ? <AnswerSources citations={sources} {...(result === null ? {} : {
+              citationOpen: { runId: result.runId, onOpenEvidence: (request) => {
+                if (!evidence.openFrom(request, sourceButtonRef.current)) return false;
+                setDrawerOpen(false);
+                return true;
+              } },
+            })} />
           : slots.renderEvidenceReader({ citations: sources }))
         : null,
     }}>
@@ -468,14 +491,15 @@ export function AskPage({ active, scope, onActivity, slots }: {
         <>
           <AskAnswer
             result={result}
+            onOpenEvidence={openEvidence}
             byId={byId}
             consent={consent}
             sourceCount={sources.length}
             readerOpen={readerOpen}
             sourceButtonRef={sourceButtonRef}
-            onToggleReader={() => setDrawerOpen((open) => !open)}
+            onToggleReader={toggleSources}
             onRetry={retryLastRequest}
-            blocks={slots?.renderAnswerBlocks?.({ response: result })}
+            blocks={slots?.renderAnswerBlocks?.({ response: result, onOpenEvidence: openEvidence })}
           />
 
           {resumeTaskId !== undefined && (
@@ -493,7 +517,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
       )}
 
       <AskHistory turns={turns} selectedRunId={result?.runId} loading={loading} onSelect={showTurn} onClear={clearHistory} />
-    </AskWorkspace>
+    </AskWorkspace></EvidenceViewer>
   );
 }
 

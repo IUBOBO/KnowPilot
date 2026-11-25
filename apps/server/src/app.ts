@@ -34,6 +34,7 @@ import {
   SEARCH_DEFAULT_LIMIT,
   SEARCH_MAX_LIMIT,
   RETRIEVAL_RECORD_TYPES,
+  type RecordRetrievalHit,
   type RecordRetrievalScope,
   SEARCH_MODES,
   SUBMISSION_STATUSES,
@@ -219,6 +220,7 @@ import {
   parseTestConnectionRequest,
   systemConfigView,
 } from './admin/config.ts';
+import { rankingFields, rankingRecordId } from './agent/journal-tool.ts';
 import { testModelConnection } from './agent/test-connection.ts';
 import {
   AskAbortedError,
@@ -336,6 +338,7 @@ import {
   createSubmissionRound,
   deleteManualRanking,
   getJournalById,
+  getRankingByPeriod,
   getSubmission,
   getSubmissionFor,
   insertManualRanking,
@@ -1239,6 +1242,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
         '没有这个检索块。它可能来自一份后来被重新索引或删除的文档。',
       );
     }
+    c.header('Cache-Control', 'private, no-store');
     return c.json(context satisfies ChunkContextResponse);
   });
 
@@ -1285,6 +1289,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
       'Content-Type': 'application/octet-stream',
       'Content-Length': String(bytes.byteLength),
       'Content-Disposition': contentDisposition(name),
+      'Cache-Control': 'private, no-store',
       // 不加这一条，浏览器可能"聪明地"按内容猜类型：上传一个 .html
       // 就会被当成网页渲染，等于给我们自己开了个存储型 XSS。
       'X-Content-Type-Options': 'nosniff',
@@ -2466,6 +2471,26 @@ export function createApp(deps: AppDeps): Hono<Env> {
     return c.json(body);
   });
 
+  app.get('/api/v1/journals/:id/rankings/evidence', (c) => {
+    const journalId = c.req.param('id');
+    const year = c.req.query('year') ?? '';
+    const system = c.req.query('system');
+    const category = c.req.query('category');
+    if (!/^[1-9]\d{3}$/u.test(year) || !system || category === undefined) {
+      throw new AppError('invalid_argument', '分区证据需要完整的年份、体系和维度。');
+    }
+    const journal = getJournalById(deps.db, journalId);
+    const ranking = getRankingByPeriod(deps.db, journalId, Number(year), system, category);
+    if (journal === null || ranking === null) throw new AppError('not_found', '没有这条分区记录。');
+    c.header('Cache-Control', 'no-store');
+    return c.json({
+      kind: 'record', recordType: 'M-JOURNAL', recordId: rankingRecordId(journal.id, ranking),
+      sourceVersion: [year, system, category].filter(Boolean).join(' '),
+      recordTitle: journal.name, recordUpdatedAt: null, queryTime: new Date().toISOString(),
+      excerpt: '', fields: rankingFields(ranking, journal.name), matchedBy: ['structured'],
+    } satisfies RecordRetrievalHit);
+  });
+
   // 订正一本刊的 ISSN / 领域。与上面那个 POST 的区别写在契约里
   // （`UpdateJournalRequest`）：那个只补空，这个要覆盖。
   // 权限是 `journal.manage`（见上面那张三档说明）。
@@ -2627,6 +2652,24 @@ export function createApp(deps: AppDeps): Hono<Env> {
   //
   // 读权限已收口（阶段 4 欠账 5 的读侧）：需要 `code.read`。
   //
+  app.get('/api/v1/code-assets/:id/evidence', (c) => {
+    const asset = getCodeAsset(deps.db, c.req.param('id'));
+    if (asset === null) throw new AppError('not_found', '没有这条数据集记录。');
+    const fields = [
+      { label: '名称', value: asset.name },
+      { label: '更新时点', value: asset.updatedAt },
+    ];
+    if (asset.profile?.version) fields.push({ label: '登记版本', value: asset.profile.version });
+    if (asset.profile?.format) fields.push({ label: '数据格式', value: asset.profile.format });
+    if (asset.profile?.scale) fields.push({ label: '规模', value: asset.profile.scale });
+    c.header('Cache-Control', 'no-store');
+    return c.json({
+      kind: 'record', recordType: 'M-CODE', recordId: asset.id, sourceVersion: asset.updatedAt,
+      recordTitle: asset.name, recordUpdatedAt: asset.updatedAt, queryTime: new Date().toISOString(),
+      excerpt: '', fields, matchedBy: ['structured'],
+    } satisfies RecordRetrievalHit);
+  });
+
   // 【列表为什么不按登记人过滤】数据集登记的目的就是"让全实验室知道数据在哪" ——
   //   按人筛等于把共享资源变成私有清单，那正是这个模块要解决的问题的反面。
   //   归属只决定**能不能改**（见下面的 assertCanWriteAsset）。

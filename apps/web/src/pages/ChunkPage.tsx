@@ -27,8 +27,9 @@ export function ChunkPage() {
   useEffect(() => {
     const ac = new AbortController();
     setLoading(true);
-    apiGet<ChunkContextResponse>(`/api/v1/chunks/${encodeURIComponent(chunkId)}`, ac.signal)
+    apiGet<ChunkContextResponse>(`/api/v1/chunks/${encodeURIComponent(chunkId)}`, ac.signal, { cache: 'no-store' })
       .then((res) => {
+        if (ac.signal.aborted) return;
         setContext(res);
         setError(null);
       })
@@ -36,14 +37,14 @@ export function ChunkPage() {
         if (isAbort(err)) return;
         setError(toApiError(err));
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!ac.signal.aborted) setLoading(false); });
     return () => ac.abort();
   }, [chunkId]);
 
   const back = <Link className="chunk-back" to="/ask">← 返回知识问答</Link>;
   if (loading) return <>{back}<p className="dim" role="status">正在读取原文…</p></>;
   if (error !== null) return <>{back}<ErrorNotice error={error} /></>;
-  if (context === null) return null;
+  if (context === null || context.chunk.id !== chunkId) return null;
 
   const { document: doc, chunk, siblings } = context;
 
@@ -57,7 +58,9 @@ export function ChunkPage() {
           <h1>{doc.title}</h1>
           <p className="dim">原文片段 · {MATERIAL_LABELS[doc.material]} · 第 {chunk.ordinal + 1} 段</p>
         </div>
-        <a className="btn-outline chunk-download" href={`/api/v1/documents/${doc.id}/file`}>下载原件</a>
+        <a className="btn-outline chunk-download" href={`/api/v1/documents/${doc.id}/file`}>
+          {context.archivedIndexVersion === undefined ? '下载原件' : '下载当前原件'}
+        </a>
       </div>
 
       <div className="chunk-location">
@@ -75,7 +78,7 @@ export function ChunkPage() {
         <div className="notice" role="status">
           <p className="notice-body" style={{ margin: 0 }}>
             这是索引 v{context.archivedIndexVersion} 的历史原文片段，用于核对旧回答的引用。
-            当前检索已使用新版索引，片段划分可能不同；请结合原件核对。
+            历史记录只包含保留的引用片段。下载入口指向当前原件。
           </p>
         </div>
       )}
@@ -97,7 +100,7 @@ export function ChunkPage() {
           }}>{copied ? '已复制' : '复制片段'}</button>
         </div>
         <div className="chunk-target"><p className="answer-body">{chunk.text}</p></div>
-        {siblings.length > 1 && (
+        {context.archivedIndexVersion === undefined && siblings.length > 1 && (
           <div className="chunk-context">
             <h2>上下文内容</h2>
             {siblings.map((sib) => (

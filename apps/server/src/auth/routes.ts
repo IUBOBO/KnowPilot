@@ -145,6 +145,7 @@ export const ROUTE_PERMISSIONS: readonly RoutePermission[] = [
 
   // ── 期刊分区库（阶段 3 增补 C）─────────────────────────────
   { method: 'GET', path: '/api/v1/journals', rule: 'journal.read' },
+  { method: 'GET', path: '/api/v1/journals/:id/rankings/evidence', rule: 'journal.read' },
   // 新增：补录缺失的刊与分区，所有登录成员都能做（用户原话"支持用户自己添加"）
   { method: 'POST', path: '/api/v1/journals', rule: 'journal.add' },
   { method: 'POST', path: '/api/v1/journals/:id/rankings', rule: 'journal.add' },
@@ -157,6 +158,7 @@ export const ROUTE_PERMISSIONS: readonly RoutePermission[] = [
   // 读是团队共享的：数据集登记本来就是为了让大家知道"数据在哪"，
   // 所以列表与详情**不按归属过滤**。归属只决定能不能改。
   { method: 'GET', path: '/api/v1/code-assets', rule: 'code.read' },
+  { method: 'GET', path: '/api/v1/code-assets/:id/evidence', rule: 'code.read' },
   { method: 'POST', path: '/api/v1/code-assets', rule: 'code.register' },
   { method: 'POST', path: '/api/v1/code-assets/check', rule: 'code.register' },
   { method: 'POST', path: '/api/v1/code-assets/:id/check', rule: 'code.register' },

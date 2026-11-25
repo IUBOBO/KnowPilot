@@ -264,6 +264,7 @@ interface ChunkContextRow {
   title: string;
   material: string;
   file_name: string | null;
+  index_version: number;
 }
 
 interface SiblingRow {
@@ -279,13 +280,13 @@ interface SiblingRow {
  *
  * 为什么必须带同页邻居：只给被引的那一块，用户看到的是一个孤立片段，
  * 没法确认"它的上下文是不是这个意思"——而核对上下文正是点进原文的全部目的。
- * 页是 PDF 才有的概念；Word / 纯文本的块 page 为 null，此时邻居退回只剩自己。
+ * 无页码或历史片段只返回该块。历史表仅保留被替换的块，索引版本也不能标识一次文档修订。
  */
 export function getChunkContext(db: Db, chunkId: string): ChunkContextResponse | null {
   const current = db
     .prepare(
       `SELECT c.id, c.doc_id, c.ordinal, c.text, c.page, c.section_path,
-              d.title, d.material, d.file_name
+              d.title, d.material, d.file_name, d.index_version
        FROM doc_chunks c JOIN documents d ON d.id = c.doc_id
        WHERE c.id = ?`,
     )
@@ -295,7 +296,7 @@ export function getChunkContext(db: Db, chunkId: string): ChunkContextResponse |
         `SELECT id, doc_id, ordinal, text, page, section_path,
                 doc_title AS title, material, file_name, index_version
            FROM archived_doc_chunks WHERE id = ?`,
-      ).get(chunkId) as (ChunkContextRow & { index_version: number }) | undefined
+      ).get(chunkId) as ChunkContextRow | undefined
     : undefined;
   const row = current ?? archive;
   if (row === undefined) return null;
@@ -311,21 +312,15 @@ export function getChunkContext(db: Db, chunkId: string): ChunkContextResponse |
   // 无页码时不查邻居：`page IS NULL` 会把整份 Word 文档的所有块都当成"同页"，
   // 那不是用户要的上下文，而是一个几百段的墙。
   const siblings: SiblingRow[] =
-    row.page === null
+    row.page === null || archive !== undefined
       ? [row]
-      : archive !== undefined
-        ? (db.prepare(
-            `SELECT id, ordinal, text, page, section_path FROM archived_doc_chunks
-              WHERE doc_id = ? AND index_version = ? AND page = ? ORDER BY ordinal`,
-          ).all(row.doc_id, archive.index_version, row.page) as unknown as SiblingRow[])
-        : (db
-          .prepare(
-            `SELECT id, ordinal, text, page, section_path FROM doc_chunks
-             WHERE doc_id = ? AND page = ? ORDER BY ordinal`,
-          )
-          .all(row.doc_id, row.page) as unknown as SiblingRow[]);
+      : (db.prepare(
+          `SELECT id, ordinal, text, page, section_path FROM doc_chunks
+           WHERE doc_id = ? AND page = ? ORDER BY ordinal`,
+        ).all(row.doc_id, row.page) as unknown as SiblingRow[]);
 
   return {
+    sourceVersion: String(row.index_version),
     ...(archive !== undefined ? { archivedIndexVersion: archive.index_version } : {}),
     document: {
       id: row.doc_id,
