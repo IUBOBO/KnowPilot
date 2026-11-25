@@ -1,7 +1,7 @@
 import { lazy, Suspense, type ReactNode } from 'react';
 import { evidenceMarker, extractEvidenceIds, readAnswerTable, type Citation } from '@knowpilot/shared';
 import { formatAnswerQueryTimes } from '../../format.ts';
-import { renderAnswerCitations } from './AnswerSources.tsx';
+import { renderAnswerCitations, type CitationOpenContext } from './AnswerSources.tsx';
 
 const MathFormula = lazy(() => import('./MathFormula.tsx'));
 const MAX_FORMULA_LENGTH = 4000;
@@ -86,14 +86,16 @@ export function FinalAnswerBody({ text, byId }: { text: string; byId: ReadonlyMa
   );
 }
 
-export function AnswerBody({ text, byId }: { text: string; byId: ReadonlyMap<string, Citation> }) {
+export function AnswerBody({ text, byId, citationOpen }: {
+  text: string; byId: ReadonlyMap<string, Citation>; citationOpen?: CitationOpenContext;
+}) {
   const lines = text.split(/\r?\n/u);
   const blocks: ReactNode[] = [];
   let start = 0;
 
   function addProse(end: number) {
     const prose = lines.slice(start, end).join('\n').trim();
-    if (prose) blocks.push(<p className="answer-body" key={start}>{renderAnswerInline(prose, byId)}</p>);
+    if (prose) blocks.push(<p className="answer-body" key={start}>{renderAnswerInline(prose, byId, citationOpen)}</p>);
   }
 
   for (let i = 0; i < lines.length;) {
@@ -123,7 +125,7 @@ export function AnswerBody({ text, byId }: { text: string; byId: ReadonlyMap<str
       blocks.push(
         <div className="ask-table-scroll" key={'table-' + i} tabIndex={0} role="region" aria-label="回答表格">
           <table className="ask-answer-table" style={{ minWidth: table.headers.length * 7.5 + 'rem' }}>
-            <thead><tr>{table.headers.map((cell, col) => <th scope="col" key={col}>{renderAnswerInline(cell, byId)}</th>)}</tr></thead>
+            <thead><tr>{table.headers.map((cell, col) => <th scope="col" key={col}>{renderAnswerInline(cell, byId, citationOpen)}</th>)}</tr></thead>
             <tbody>
               {table.rows.map((row, index) => {
                 const ids = extractEvidenceIds(row.line);
@@ -134,8 +136,8 @@ export function AnswerBody({ text, byId }: { text: string; byId: ReadonlyMap<str
                   <tr key={index}>
                     {cells.map((cell, col) => (
                       <td key={col}>
-                        {renderAnswerInline(cell, byId)}
-                        {col === Math.max(0, coreColumn) && markers !== '' && <> {renderAnswerCitations(markers, byId)}</>}
+                        {renderAnswerInline(cell, byId, citationOpen)}
+                        {col === Math.max(0, coreColumn) && markers !== '' && <> {renderAnswerCitations(markers, byId, citationOpen)}</>}
                       </td>
                     ))}
                   </tr>
@@ -151,7 +153,7 @@ export function AnswerBody({ text, byId }: { text: string; byId: ReadonlyMap<str
       const listStart = i;
       const children: ReactNode[] = [];
       for (let row: ReturnType<typeof answerListItem> = item; row !== null && row.ordered === item.ordered; row = answerListItem(lines[i] ?? '')) {
-        children.push(<li key={i}>{renderAnswerInline(row.text, byId)}</li>);
+        children.push(<li key={i}>{renderAnswerInline(row.text, byId, citationOpen)}</li>);
         i += 1;
       }
       blocks.push(item.ordered
@@ -159,7 +161,7 @@ export function AnswerBody({ text, byId }: { text: string; byId: ReadonlyMap<str
         : <ul className="ask-answer-list" key={listStart}>{children}</ul>);
     } else if (heading !== null) {
       addProse(i);
-      blocks.push(<h3 className="ask-answer-heading" key={i}>{renderAnswerInline(heading[1]!, byId)}</h3>);
+      blocks.push(<h3 className="ask-answer-heading" key={i}>{renderAnswerInline(heading[1]!, byId, citationOpen)}</h3>);
       i += 1;
     } else if (line.trim() === '') {
       addProse(i);
@@ -179,12 +181,12 @@ function answerListItem(line: string) {
   return match === null ? null : { ordered: match[1] !== undefined, ordinal: Number(match[1] ?? 1), text: match[2]! };
 }
 
-function renderAnswerInline(text: string, byId: ReadonlyMap<string, Citation>): ReactNode[] {
+function renderAnswerInline(text: string, byId: ReadonlyMap<string, Citation>, citationOpen?: CitationOpenContext): ReactNode[] {
   const nodes: ReactNode[] = [];
   let end = 0;
   for (const token of text.matchAll(INLINE_TOKEN)) {
     const start = token.index;
-    if (start > end) nodes.push(<span key={end}>{renderAnswerCitations(formatAnswerQueryTimes(text.slice(end, start)), byId)}</span>);
+    if (start > end) nodes.push(<span key={end}>{renderAnswerCitations(formatAnswerQueryTimes(text.slice(end, start)), byId, citationOpen)}</span>);
     const { escaped, code, paren, dollar, strong, emphasis } = token.groups!;
     const formula = paren ?? dollar;
     if (escaped !== undefined) nodes.push(<span key={start}>{escaped}</span>);
@@ -192,12 +194,12 @@ function renderAnswerInline(text: string, byId: ReadonlyMap<string, Citation>): 
     else if (formula !== undefined) nodes.push(<AnswerMath key={start} source={formula} />);
     else if (strong !== undefined) {
       const bold = strong.trim();
-      nodes.push(bold ? <strong key={start}>{renderAnswerInline(bold, byId)}</strong> : <span key={start}>{token[0]}</span>);
+      nodes.push(bold ? <strong key={start}>{renderAnswerInline(bold, byId, citationOpen)}</strong> : <span key={start}>{token[0]}</span>);
     } else if (emphasis !== undefined) {
-      nodes.push(<em key={start}>{renderAnswerInline(emphasis, byId)}</em>);
+      nodes.push(<em key={start}>{renderAnswerInline(emphasis, byId, citationOpen)}</em>);
     }
     end = start + token[0].length;
   }
-  if (end < text.length) nodes.push(<span key={end}>{renderAnswerCitations(formatAnswerQueryTimes(text.slice(end)), byId)}</span>);
+  if (end < text.length) nodes.push(<span key={end}>{renderAnswerCitations(formatAnswerQueryTimes(text.slice(end)), byId, citationOpen)}</span>);
   return nodes;
 }
