@@ -21,8 +21,9 @@ import {
 } from '@knowpilot/shared';
 import type { AppConfig } from '../config.ts';
 import type { Db } from '../db/index.ts';
-import { loadChunkTexts, loadDocumentVersions, parseSectionPath } from '../documents/repo.ts';
-import { expandSectionEvidence, loadNeighborChunks, searchDocuments, type NeighborContext } from '../documents/search.ts';
+import { loadChunkEvidenceRows, parseSectionPath } from '../documents/repo.ts';
+import { expandSectionEvidence, loadNeighborChunks, type NeighborContext } from '../documents/search.ts';
+import { retrieveDocumentPage } from '../retrieval/service.ts';
 import {
   MAX_RETRIEVAL_CONTEXT_CHARS,
   selectContextWindows,
@@ -275,25 +276,18 @@ export function createRetrieveTool(deps: RetrieveToolDeps): AgentTool<typeof Ret
         };
       }
 
-      const result = await searchDocuments(deps.db, deps.config, {
-        query: params.query,
-        mode,
-        limit,
-        ...(material !== undefined ? { material } : {}),
-        ...(documentId !== undefined ? { documentId } : {}),
+      const { search: result } = await retrieveDocumentPage(deps.db, deps.config, {
+        version: 1, query: params.query, strategy: mode, limit, offset: 0, candidateLimit: limit,
+        scope: {
+          kind: 'document',
+          ...(material === undefined ? {} : { material }),
+          ...(documentId === undefined ? {} : { documentId }),
+        },
       });
 
-      const originalIds = new Set(result.hits.map((h) => h.chunkId));
-      const evidenceHits = expandSectionEvidence(deps.db,result.hits,params.query);
-
-      const texts = loadChunkTexts(
-        deps.db,
-        evidenceHits.map((h: SearchHit) => h.chunkId),
-      );
-      const versions = loadDocumentVersions(
-        deps.db,
-        evidenceHits.map((h: SearchHit) => h.documentId),
-      );
+      const originalIds = new Set(result.hits.map((hit) => hit.chunkId));
+      const evidenceHits = expandSectionEvidence(deps.db, result.hits, params.query);
+      const sources = loadChunkEvidenceRows(deps.db, evidenceHits.map((hit) => hit.chunkId));
 
       // 先做候选表（原文 + 来源），再让预算器决定这次展示哪几段。
       // 没被选中的**不加入证据池**：否则 Trace 的 retrievalHits 会把
@@ -307,12 +301,13 @@ export function createRetrieveTool(deps: RetrieveToolDeps): AgentTool<typeof Ret
       for (const hit of evidenceHits) {
         // 取不到原文就跳过这一条：宁可少给一条证据，也不能给一条没有正文的空壳，
         // 那会让模型以为"这里什么都没有"而放弃一个本来有效的出处。
-        const text = texts.get(hit.chunkId);
-        if (text === undefined || text.trim() === '') continue;
+        const source = sources.get(hit.chunkId);
+        if (source === undefined || source.documentId !== hit.documentId || source.material !== hit.material ||
+            source.text.trim() === '') continue;
         candidates.push({
           hit,
-          text,
-          sourceVersion: String(versions.get(hit.documentId) ?? 'unknown'),
+          text: source.text,
+          sourceVersion: String(source.indexVersion),
           sourceKey: `doc:${hit.documentId}`,
         });
       }

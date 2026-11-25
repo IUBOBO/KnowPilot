@@ -20,7 +20,8 @@ import type { Db } from '../db/index.ts';
 import { getJournalById, getSubmissionFor, listRankings } from '../submissions/repo.ts';
 import type { RecordEvidenceInput } from './evidence.ts';
 import { rankingFields, rankingRecordId } from './journal-tool.ts';
-import { assetFields, restoreLedgerEvidence, submissionFields } from './live-tools.ts';
+import { assetFields } from './live-tools.ts';
+import { restoreLedgerEvidence, submissionFields } from '../retrieval/records.ts';
 import type { CheckpointRecordRef } from './task-store.ts';
 
 export interface RecordRestoreResult {

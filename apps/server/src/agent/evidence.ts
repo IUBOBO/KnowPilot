@@ -21,19 +21,20 @@
 import {
   RECORD_TYPE_LABELS,
   type CitationField,
+  type DocumentEvidenceLocator,
+  type RecordEvidenceLocator,
   type Material,
   type MatchSource,
-  type RecordType,
   type SearchHit,
 } from '@knowpilot/shared';
+import { renderRecordBody, recordSourceVersion, type RecordEvidenceInput } from '../retrieval/records.ts';
+
+export { renderRecordBody, type RecordEvidenceInput } from '../retrieval/records.ts';
 
 /** 一条文档证据。字段全部来自库，模型碰不到。 */
-export interface DocEvidence {
-  kind: 'document';
+export interface DocEvidence extends DocumentEvidenceLocator {
   /** 证据号，"E1" / "E2" … */
   id: string;
-  chunkId: string;
-  documentId: string;
   documentTitle: string;
   material: Material;
   page: number | null;
@@ -42,8 +43,6 @@ export interface DocEvidence {
   text: string;
   /** 原文总字符数（`text.length` 的固化，避免渲染时反复算） */
   originalChars: number;
-  /** 来源版本：`documents.index_version` */
-  sourceVersion: string;
   score: number;
   matchedBy?: readonly MatchSource[];
 }
@@ -56,11 +55,8 @@ export interface DocEvidence {
  * 引用卡片上的摘录也用它。两处若各存一份，早晚会因为"有人改了渲染、
  * 忘了改摘录"而对不上 —— 而那时用户核对的依据就是错的。
  */
-export interface RecordEvidence {
-  kind: 'record';
+export interface RecordEvidence extends RecordEvidenceLocator {
   id: string;
-  recordType: RecordType;
-  recordId: string;
   recordTitle: string;
   /** 查这条记录的时刻（ISO） */
   queryTime: string;
@@ -74,8 +70,6 @@ export interface RecordEvidence {
   fields: readonly CitationField[];
   /** 字段渲染文本的总字符数 */
   originalChars: number;
-  /** 来源版本：适用版本 / 记录更新时间 / 查询时点 */
-  sourceVersion: string;
 }
 
 /**
@@ -93,22 +87,6 @@ export interface AddResult {
   evidence: Evidence;
   /** false = 这一份东西之前已经进过池子，沿用了原编号 */
   isNew: boolean;
-}
-
-/** 新增一条记录证据时要给的东西 —— `id` 由池子发，不在这里传。 */
-export interface RecordEvidenceInput {
-  recordType: RecordType;
-  recordId: string;
-  recordTitle: string;
-  queryTime: string;
-  recordUpdatedAt: string | null;
-  version?: string;
-  fields: readonly CitationField[];
-}
-
-/** 结论字段的文本形态。给模型看的那段、以及引用卡片上的摘录，都用它。 */
-export function renderRecordBody(fields: readonly CitationField[]): string {
-  return fields.map((f) => `${f.label}：${f.value}`).join('\n');
 }
 
 /**
@@ -215,7 +193,7 @@ export class EvidencePool {
         id,
         ...input,
         originalChars: body.length,
-        sourceVersion: input.version ?? input.recordUpdatedAt ?? input.queryTime,
+        sourceVersion: recordSourceVersion(input),
       }),
       () => {},
     );
