@@ -291,12 +291,23 @@ try {
   assert.equal((await fetchEvidence(period('2021x', '合成:特殊维度'))).status, 400);
   assert.equal((await fetchEvidence(rankingPath + 'year=2021&system=JCR')).status, 400);
 
-  for (const path of [assetPath, oldPeriod]) assert.equal((await fetchEvidence(path, false)).status, 401);
+  const chunkPath = '/api/v1/chunks/block-1';
+  const originalPath = '/api/v1/documents/scoped/file';
+  mkdirSync(cfg.uploadDir, { recursive: true });
+  writeFileSync(join(cfg.uploadDir, 'reader.txt'), 'synthetic evidence original');
+  db.prepare("UPDATE documents SET source_path = ? WHERE id = 'scoped'").run('uploads/reader.txt');
+  for (const path of [chunkPath, originalPath]) {
+    const received = await fetchEvidence(path);
+    assert.equal(received.status, 200);
+    assert.equal(received.headers.get('cache-control'), 'private, no-store');
+  }
+  const protectedPaths = [assetPath, oldPeriod, chunkPath, originalPath];
+  for (const path of protectedPaths) assert.equal((await fetchEvidence(path, false)).status, 401);
   assert.equal(deleteSession(db, session.token), true);
-  for (const path of [assetPath, oldPeriod]) {
+  for (const path of protectedPaths) {
     const denied = await fetchEvidence(path);
     assert.equal(denied.status, 401);
-    assert.doesNotMatch(await denied.text(), /合成数据登记|合成期刊|特殊维度|FIXTURE_PATH/u);
+    assert.doesNotMatch(await denied.text(), /合成数据登记|合成期刊|特殊维度|FIXTURE_PATH|synthetic evidence original|scopeFixtureMark/u);
   }
   console.log('✓ Authorized exact dataset and ranking evidence, old year and dimensions, current revision, and revoked session');
 } finally {

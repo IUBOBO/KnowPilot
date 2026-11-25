@@ -27,8 +27,9 @@ export function ChunkPage() {
   useEffect(() => {
     const ac = new AbortController();
     setLoading(true);
-    apiGet<ChunkContextResponse>(`/api/v1/chunks/${encodeURIComponent(chunkId)}`, ac.signal)
+    apiGet<ChunkContextResponse>(`/api/v1/chunks/${encodeURIComponent(chunkId)}`, ac.signal, { cache: 'no-store' })
       .then((res) => {
+        if (ac.signal.aborted) return;
         setContext(res);
         setError(null);
       })
@@ -36,14 +37,14 @@ export function ChunkPage() {
         if (isAbort(err)) return;
         setError(toApiError(err));
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!ac.signal.aborted) setLoading(false); });
     return () => ac.abort();
   }, [chunkId]);
 
   const back = <Link className="chunk-back" to="/ask">← 返回知识问答</Link>;
   if (loading) return <>{back}<p className="dim" role="status">正在读取原文…</p></>;
   if (error !== null) return <>{back}<ErrorNotice error={error} /></>;
-  if (context === null) return null;
+  if (context === null || context.chunk.id !== chunkId) return null;
 
   const { document: doc, chunk, siblings } = context;
 

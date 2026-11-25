@@ -1242,6 +1242,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
         '没有这个检索块。它可能来自一份后来被重新索引或删除的文档。',
       );
     }
+    c.header('Cache-Control', 'private, no-store');
     return c.json(context satisfies ChunkContextResponse);
   });
 
@@ -1288,6 +1289,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
       'Content-Type': 'application/octet-stream',
       'Content-Length': String(bytes.byteLength),
       'Content-Disposition': contentDisposition(name),
+      'Cache-Control': 'private, no-store',
       // 不加这一条，浏览器可能"聪明地"按内容猜类型：上传一个 .html
       // 就会被当成网页渲染，等于给我们自己开了个存储型 XSS。
       'X-Content-Type-Options': 'nosniff',

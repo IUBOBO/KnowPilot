@@ -103,7 +103,7 @@ function json(response, payload, status = 200) {
 
 const activity = new EventEmitter();
 const calls = [];
-let revoked = false;
+let revoked = 0;
 const server = createServer(async (request, response) => {
   const { pathname, searchParams } = new URL(request.url, mockOrigin);
   const parts = [];
@@ -122,7 +122,7 @@ const server = createServer(async (request, response) => {
     if (revoked) return json(response, { error: {
       code: 'permission_denied', title: '合成撤权', message: '合成撤权内部信息',
       retryable: false, requestId: 'fixture',
-    } }, 403);
+    } }, revoked);
     return json(response, { document: doc, chunk, siblings: [chunk], archivedIndexVersion: 1, sourceVersion: '1' });
   }
   if (pathname === '/api/v1/quick-search') return json(response, {
@@ -319,14 +319,25 @@ try {
   await visible(reader.getByRole('heading', { name: doc.title }));
   await desktop.keyboard.press('Escape');
   await focusIs(open);
-  revoked = true;
+  revoked = 403;
+  await source.hover();
+  const revokedPreview = article.getByRole('tooltip');
+  await visible(revokedPreview.getByText(/此证据不可读取/u));
+  assert.doesNotMatch(await revokedPreview.innerText(), /合成撤权|仪器校准手册|先记录空载读数/u);
   const oldReads = calls.filter((call) => call.pathname === '/api/v1/chunks/fixture-chunk').length;
   await source.click();
   await visible(reader.getByText(/此证据不可读取/u));
   assert.doesNotMatch(await reader.innerText(), /合成撤权|合成原文|仪器校准手册/u);
   assert.equal(calls.filter((call) => call.pathname === '/api/v1/chunks/fixture-chunk').length, oldReads + 1);
   await desktop.keyboard.press('Escape');
-  revoked = false;
+  await focusIs(source);
+  await visible(revokedPreview.getByText(/此证据不可读取/u));
+  revoked = 404;
+  await open.click();
+  await visible(aside.getByText(/此证据不可读取/u));
+  assert.doesNotMatch(await aside.innerText(), /合成撤权|仪器校准手册|先记录空载读数/u);
+  await desktop.keyboard.press('Escape');
+  revoked = 0;
   await visible(article.getByRole('heading', { name: '仪器读数与误差' }));
   await desktop.locator('summary').filter({ hasText: /查询过程/u }).click();
   await visible(desktop.getByText(/候选 1/u).first());
@@ -412,6 +423,15 @@ try {
   await desktop.getByRole('button', { name: '搜索', exact: true }).click();
   await reader.waitFor({ state: 'hidden' });
   assert.equal(new URL(desktop.url()).searchParams.get('q'), '更换检索词');
+  await documentHit.click();
+  await reader.getByRole('button', { name: '全屏阅读' }).click();
+  const expanded = desktop.getByRole('dialog', { name: '证据阅读器' });
+  await visible(expanded);
+  await desktop.goBack();
+  await expanded.waitFor({ state: 'hidden' });
+  await documentHit.click();
+  await visible(reader.getByRole('button', { name: '全屏阅读' }));
+  assert.equal(await expanded.count(), 0);
 
   const mobile = await makePage({ width: 390, height: 844 });
   const narrow = await ask(mobile, questions.report);

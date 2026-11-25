@@ -167,7 +167,11 @@ export function EvidenceViewer({ reader, children, renderDocument }: {
   const titleId = useId();
   const closeButton = useRef<HTMLButtonElement>(null);
   const [expanded, setExpanded] = useState(false);
-  const dialog = reader !== null && (!docked || expanded);
+  const opened = reader !== null;
+  useEffect(() => {
+    if (!opened) setExpanded(false);
+  }, [opened]);
+  const dialog = opened && (!docked || expanded);
 
   function close() {
     setExpanded(false);

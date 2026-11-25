@@ -1,4 +1,5 @@
 .ask-conversation .cite-pop { pointer-events: none; }
+.cite-preview { display: grid; gap: .25rem; overflow-wrap: anywhere; }
 
 .ask-workspace {
   display: grid;
