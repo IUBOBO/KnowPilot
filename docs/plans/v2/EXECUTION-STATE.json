@@ -162,9 +162,22 @@
           "confirmed_by": [
             "g2_blocks",
             "g2_reader"
-          ]
+          ],
+          "phase_pr_head": "56d72e1d463c83371a50723b618f4988068da3e4"
         },
-        "g1_docs_pr": 19
+        "g1_docs_pr": 19,
+        "status": "awaiting_merge_approval",
+        "branch_merge_tree_check": "passed",
+        "pull_requests": {
+          "g1_docs": 19,
+          "3": 21,
+          "6": 20
+        },
+        "deferred": {
+          "4.N3": "3.released",
+          "4.feature_pr": "13-B.4.pre",
+          "3.full-accepted": "4.released"
+        }
       }
     },
     {
@@ -288,21 +301,30 @@
     {
       "issue": 3,
       "stable_id": "V2-03",
-      "state": "in_progress",
+      "state": "awaiting_merge_approval",
       "owner_role": "Answer composer",
       "owner": "g2_blocks",
       "branch": "codex/v2-03-answer-blocks",
       "worktree_alias": "KnowPilot-V2-03",
       "completed_nodes": [
-        "3.ready"
+        "3.ready",
+        "3.N1",
+        "3.N2",
+        "3.N3"
       ],
-      "prs": [],
-      "head_sha": "036eca7285e465ca7cb296ac666922da92edd311",
+      "prs": [
+        21
+      ],
+      "head_sha": "56d72e1d463c83371a50723b618f4988068da3e4",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "premerge_passed",
+        "evidence": [
+          "docs/plans/v2/V2-03.md",
+          "docs/plans/v2/gates/G2.md"
+        ],
+        "reviewer": "independent_spec_and_standards",
+        "full_integration": "pending_4_released"
       },
       "release_node": "3.full-accepted",
       "base_sha": "37556f2f894935a25c56c26003dbd265cdec13db"
@@ -310,24 +332,40 @@
     {
       "issue": 4,
       "stable_id": "V2-04",
-      "state": "in_progress",
+      "state": "waiting_for_3_released",
       "owner_role": "Evidence UI",
       "owner": "g2_reader",
       "branch": "codex/v2-04-evidence-viewer",
       "worktree_alias": "KnowPilot-V2-04",
       "completed_nodes": [
-        "4.ready"
+        "4.ready",
+        "4.N1",
+        "4.N2"
       ],
       "prs": [],
-      "head_sha": "036eca7285e465ca7cb296ac666922da92edd311",
+      "head_sha": "fd4fe39629e99171c7f49480c1b1275ee4a28c52",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "partial_pass",
+        "evidence": [
+          "docs/plans/v2/V2-04.md"
+        ],
+        "reviewer": "independent_spec_and_standards",
+        "reason": "N1/N2 verified on isolated fixtures. N3, 13-B.4.pre and PR wait for 3.released."
       },
       "release_node": "4.released",
-      "base_sha": "37556f2f894935a25c56c26003dbd265cdec13db"
+      "base_sha": "37556f2f894935a25c56c26003dbd265cdec13db",
+      "preintegration": {
+        "tested_local_sha": "ba10deee649cb81f0d4b8674d53e70fa01c61d33",
+        "verified_tree_sha": "73db0a3ddf03a87d4ae0ce9a2d8c0f45367fbcfc",
+        "evidence_hashes": {
+          "commands.json": "17673e051991f87007f8110800e6ff9155f45a54aee56262a66a8d41bd759a7f",
+          "targeted.json": "d7e1a7d35f64a11a3e135aec1e765fdb56c0586e1e65ea1be0173d3feaeecd48",
+          "blockers.json": "557a9757dc0d054672771d8b68c7a977b68f471835ac2fe3c008d4d7ca37a239"
+        },
+        "pending_node": "4.N3",
+        "requires": "3.released"
+      }
     },
     {
       "issue": 5,
@@ -351,21 +389,29 @@
     {
       "issue": 6,
       "stable_id": "V2-06",
-      "state": "in_progress",
+      "state": "awaiting_merge_approval",
       "owner_role": "Trace/telemetry",
       "owner": "g2_process",
       "branch": "codex/v2-06-retrieval-process",
       "worktree_alias": "KnowPilot-V2-06",
       "completed_nodes": [
-        "6.ready"
+        "6.ready",
+        "6.N1",
+        "6.N2",
+        "6.N3"
       ],
-      "prs": [],
-      "head_sha": "37556f2f894935a25c56c26003dbd265cdec13db",
+      "prs": [
+        20
+      ],
+      "head_sha": "7b88b666f32f8431b40e93c13ad6dae9e0611051",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "premerge_passed",
+        "evidence": [
+          "docs/plans/v2/V2-06.md",
+          "docs/plans/v2/gates/G2.md"
+        ],
+        "reviewer": "independent_spec_and_standards"
       },
       "release_node": "6.released",
       "base_sha": "37556f2f894935a25c56c26003dbd265cdec13db"
@@ -498,7 +544,9 @@
         "13-B.1.pre",
         "13-B.1.post",
         "13-B.2.pre",
-        "13-B.2.post"
+        "13-B.2.post",
+        "13-B.3.pre",
+        "13-B.6.pre"
       ],
       "prs": [
         16
@@ -653,6 +701,60 @@
                   "passed_assertions": 28,
                   "total_assertions": 30
                 }
+              }
+            },
+            "3": {
+              "pr": 21,
+              "pre": {
+                "status": "passed",
+                "tested_local_sha": "bfc800f6a615578f4e1c6c06108303b21494d190",
+                "pull_request_head": "56d72e1d463c83371a50723b618f4988068da3e4",
+                "verified_release_tree_sha": "603f707afdbc27a3f6b15b34546dea698c1c4166",
+                "commands_passed": 12,
+                "commands_total": 13,
+                "evidence_hashes": {
+                  "commands.json": "97cdb7f6e2c1a42dac0f00f71db881695c3b443eb20d5f609959b85e10bd810e",
+                  "targeted.json": "74ad001ee886e47fce554d5c03263b3f106b3e7368e27c1169b7718aa1701e0b",
+                  "blockers.json": "320949f43fa5d98b2a2b8f40480a720554064b4a8d0a1d8f6766f50cb7fab185"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "not_run",
+                "merge_sha": null
+              }
+            },
+            "6": {
+              "pr": 20,
+              "pre": {
+                "status": "passed",
+                "tested_local_sha": "a81e5c5f048344dfcb12e28082f2fce0a10a0cbe",
+                "pull_request_head": "7b88b666f32f8431b40e93c13ad6dae9e0611051",
+                "verified_release_tree_sha": "24c56b8aa467a59a92f20bf2c31fc20d3c079365",
+                "commands_passed": 13,
+                "commands_total": 14,
+                "evidence_hashes": {
+                  "commands.json": "f2580f583051ddb64f75563fd90c2d82a47a8b294f885355365127d942a8c1ef",
+                  "targeted.json": "f4e46d7c7832ff2b47a293e3660f35984043d335b1c6b522e082d680819b2e2f",
+                  "blockers.json": "c45c7b301afbe6da9eb4d71445b176301fb2bea3317cea6faf9b9eb2cad0d645"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "not_run",
+                "merge_sha": null
               }
             }
           }
