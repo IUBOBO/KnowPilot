@@ -424,7 +424,7 @@ function TraceDetailBody({ item }: { item: AdminTraceDetail }) {
                 <th style={{ width: 60 }}>序号</th>
                 <th style={{ width: 90 }}>时间</th>
                 <th style={{ width: 150 }}>工具</th>
-                <th>查询词</th>
+                <th>检索参数</th>
                 <th style={{ width: 80 }}>命中</th>
                 <th style={{ width: 90 }}>耗时</th>
                 <th style={{ width: 90 }}>结果</th>
@@ -436,11 +436,27 @@ function TraceDetailBody({ item }: { item: AdminTraceDetail }) {
                   <td className="mono">{i + 1}</td>
                   <td className="mono">+{fmtDuration(t.atMs)}</td>
                   <td className="mono">{t.name}</td>
-                  <td>{t.query ?? <span className="dim">—</span>}</td>
+                  <td>
+                    {t.retrieval === undefined ? (t.query ?? <span className="dim">—</span>) : (
+                      <span>
+                        {t.retrieval.mode === 'keyword' ? '关键词' : t.retrieval.mode === 'hybrid' ? '混合' : '语义'}
+                        {t.retrieval.lookup !== undefined && (
+                          <> · 词已脱敏{t.retrieval.order === undefined ? '' : ` · 步骤 ${t.retrieval.order + 1}`} · 请求 {t.retrieval.lookup.requestedMode} · {t.retrieval.lookup.scope === 'document' ? '单文档' : '资料库'}
+                            {t.retrieval.lookup.material !== undefined && ` · ${t.retrieval.lookup.material}`}
+                            {' · '}上限 {t.retrieval.lookup.limit}</>
+                        )}
+                        {' · '}新增证据 {t.retrieval.newEvidence}
+                        {t.retrieval.ranking === 'reranked' && ` · 已重排 ${t.retrieval.rankedCandidates ?? 0} 条`}
+                        {t.retrieval.ranking === 'fallback' && ' · 重排回退'}
+                        {t.retrieval.rankingMs !== undefined && ` · 重排 ${fmtDuration(t.retrieval.rankingMs)}`}
+                      </span>
+                    )}
+                  </td>
                   <td className="mono">{t.hitCount === null ? '—' : t.hitCount}</td>
                   <td className="mono">{fmtDuration(t.ms)}</td>
                   <td>
-                    {t.isError ? <span className="pill err">报错</span> : <span className="pill ok">完成</span>}
+                    {t.skipped === 'context_budget' ? <span className="pill">证据额度用尽 · 未检索</span>
+                      : t.isError ? <span className="pill err">报错</span> : <span className="pill ok">完成</span>}
                   </td>
                 </tr>
               ))}

@@ -220,7 +220,7 @@ async function scenario(opts: {
   budget: Partial<BudgetLimits>;
   strategy: Strategy;
   /** 由场景自己决定什么时候中止（测客户端断开用）。 */
-  onEvent?: (ev: { type: string }) => void;
+  onEvent?: (ev: import('./ask-run.ts').AskRunEvent) => void;
   signal?: AbortSignal;
 }): Promise<ScenarioResult> {
   // 每个场景一个**独立的内存库**：`ask_records` 的行数断言不能跨场景串味。
@@ -344,7 +344,7 @@ console.log('终态 · 中止：抛 AskAbortedError，但不产出半截答案')
     signal: controller.signal,
     // 工具一开始跑就中止 —— 这正是"用户点了停止"发生时机的忠实再现。
     onEvent: (ev) => {
-      if (ev.type === 'status') controller.abort();
+      if (ev.type === 'status' && ev.phase === 'retrieval' && ev.state === 'start') controller.abort();
     },
   });
   checkSingleTerminal('中止', r);

@@ -2,14 +2,15 @@
  * 运行 Trace 的读写（O7）。
  *
  * 【这一张表回答什么】"这次问答过程中发生了什么"：工具按什么顺序调了哪些、
- *   每次查了什么词、命中几条、预算用掉多少、哪些 Claim 没过、耗时多少。
+ *   检索的模式与范围、命中几条、预算用掉多少、哪些 Claim 没过、耗时多少。
  *   它不回答"答案写了什么"—— 回答正文与证据摘录从来不进这张表。
  *
  * 【与另外两张表的关系】`run_id` 是同一个值：
- *   · `ask_records` 提供问题原文与归属（本模块 JOIN 它，不复制一份）；
+ *   · `ask_records` 只用于判断问题记录是否存在，Trace 不选择或返回原文；
  *   · `usage_events` 提供调用级费用（详情页按 run_id 再查一次）；
  *   · 本表提供过程快照。三张表各管一件事，不合并。
  */
+import { MATERIALS } from '@knowpilot/shared';
 import type {
   AdminTraceDetail,
   AdminTraceListItem,
@@ -36,7 +37,7 @@ import type {
 import type { AskFinalization } from '../agent/ask-run.ts';
 import type { Db } from '../db/index.ts';
 
-/** 写一行 Trace。调用方负责 caption（问题原文不在本表，靠 JOIN）。 */
+/** 写入一条脱敏的问答运行记录。 */
 export interface NewRunTrace {
   finalization: AskFinalization;
   userId: string | null;
@@ -74,7 +75,7 @@ export function insertRunTrace(db: Db, input: NewRunTrace): void {
     f.evidenceCount,
     f.contextChars,
     JSON.stringify(f.budget),
-    JSON.stringify(f.toolTrace ?? []),
+    JSON.stringify((f.toolTrace ?? []).map(safeToolCall)),
     JSON.stringify(f.retrievalHits),
     JSON.stringify(f.recordEvidence),
     JSON.stringify(f.citationMap),
@@ -82,10 +83,10 @@ export function insertRunTrace(db: Db, input: NewRunTrace): void {
     f.quoteChecks === undefined ? null : JSON.stringify(f.quoteChecks),
     JSON.stringify(f.plan),
     f.rewriteRounds,
-    JSON.stringify(f.rewriteEvents),
-    f.followUpRewrite === undefined ? null : JSON.stringify(f.followUpRewrite),
-    JSON.stringify(f.warnings),
-    JSON.stringify(f.errors),
+    JSON.stringify(f.rewriteEvents.map(safeRewriteEvent)),
+    f.followUpRewrite === undefined ? null : JSON.stringify(safeFollowUp(f.followUpRewrite)),
+    JSON.stringify(maskedMessages(f.warnings)),
+    JSON.stringify(maskedMessages(f.errors)),
     input.recordedAt,
   );
 }
@@ -104,7 +105,7 @@ interface TraceListRow {
   asked_at: string;
   user_id: string | null;
   asker: string | null;
-  question: string | null;
+  has_question: 0 | 1;
   outcome: string;
   stop_reason: string;
   delivery_status: string;
@@ -115,7 +116,7 @@ interface TraceListRow {
 const LIST_SELECT = `
   SELECT t.run_id, t.asked_at, t.user_id,
          COALESCE(u.display_name, u.username) AS asker,
-         r.question,
+         (r.question IS NOT NULL) AS has_question,
          t.outcome, t.stop_reason, t.delivery_status,
          t.duration_ms, t.evidence_count
     FROM ask_run_traces t
@@ -157,7 +158,7 @@ function toListItem(row: TraceListRow): AdminTraceListItem {
     askedAt: row.asked_at,
     userId: row.user_id,
     asker: row.asker,
-    question: row.question,
+    question: row.has_question === 1 ? REDACTED_TRACE_TEXT : null,
     outcome: row.outcome as AskOutcome,
     stopReason: row.stop_reason as TraceStopReason,
     deliveryStatus: row.delivery_status as TraceDeliveryStatus,
@@ -227,10 +228,91 @@ interface TraceDetailRow extends TraceListRow {
   recorded_at: string;
 }
 
+const REDACTED_TRACE_TEXT = '已脱敏';
+
+// Trace payloads written before this projection can contain arbitrary user/model/tool text.
+const TRACE_TOOL_NAMES = new Set([
+  'retrieve', 'read_paper', 'query_submissions', 'probe_dataset', 'query_journal', 'query_patents',
+  'query_theses', 'query_people', 'submit_answer', 'repair_quotes', 'follow_up_on_evidence',
+]);
+function parseTraceArray<T extends object>(raw: string): T[] {
+  const value = parseJson<unknown>(raw, []);
+  return Array.isArray(value)
+    ? value.filter((item): item is T => item !== null && typeof item === 'object' && !Array.isArray(item))
+    : [];
+}
+function maskedMessages(messages: readonly unknown[]): string[] {
+  return messages.map(() => REDACTED_TRACE_TEXT);
+}
+
+function redactTraceMessages(raw: string): string[] {
+  const messages = parseJson<unknown>(raw, []);
+  return Array.isArray(messages) ? maskedMessages(messages) : [];
+}
+
+function safeRetrieval(value: TraceToolCall['retrieval']): TraceToolCall['retrieval'] {
+  if (!value || !['keyword', 'semantic', 'hybrid'].includes(value.mode) || typeof value.newEvidence !== 'number') return undefined;
+  const query = value.lookup;
+  const lookup = query != null && ['keyword', 'semantic', 'hybrid'].includes(query.requestedMode) &&
+    (query.scope === 'library' || query.scope === 'document') && Number.isInteger(query.limit) && query.limit > 0 ? {
+      requestedMode: query.requestedMode, scope: query.scope, limit: query.limit,
+      ...(query.material !== undefined && MATERIALS.includes(query.material) ? { material: query.material } : {}),
+    } : undefined;
+  return {
+    mode: value.mode,
+    newEvidence: value.newEvidence,
+    ...(typeof value.order === 'number' && Number.isSafeInteger(value.order) && value.order >= 0 ? { order: value.order } : {}),
+    ...(lookup === undefined ? {} : { lookup }),
+    ...(value.ranking === 'reranked' || value.ranking === 'fallback' ? { ranking: value.ranking } : {}),
+    ...(typeof value.rankedCandidates === 'number' ? { rankedCandidates: value.rankedCandidates } : {}),
+    ...(typeof value.rankingMs === 'number' ? { rankingMs: value.rankingMs } : {}),
+  };
+}
+
+function safeToolCall(call: TraceToolCall): TraceToolCall {
+  const retrieval = safeRetrieval(call.retrieval);
+  return {
+    name: TRACE_TOOL_NAMES.has(call.name) ? call.name : 'unknown',
+    ...(call.skipped === 'context_budget' ? { skipped: call.skipped } : {}),
+    query: typeof call.query === 'string' ? REDACTED_TRACE_TEXT : null,
+    hitCount: typeof call.hitCount === 'number' ? call.hitCount : null,
+    ms: typeof call.ms === 'number' ? call.ms : 0,
+    atMs: typeof call.atMs === 'number' ? call.atMs : 0,
+    isError: call.isError === true,
+    ...(retrieval === undefined ? {} : { retrieval }),
+  };
+}
+
+function safeRewriteEvent(event: TraceRewriteEvent): TraceRewriteEvent {
+  const subgoalId = (value: unknown): value is string => typeof value === 'string' && /^[GF]\d+$/u.test(value);
+  const evidenceId = (value: unknown): value is string => typeof value === 'string' && /^E\d+$/u.test(value);
+  const coverage = ['sufficient', 'partial', 'irrelevant', 'conflicting', 'not_found', 'blocked'];
+  const gapReasons = ['term_mismatch', 'too_broad', 'missing_source', 'missing_subgoal', 'conflicting_sources',
+    'permission_denied', 'budget_exceeded', 'unknown'];
+  const stoppedReasons = ['completed', 'budget', 'empty_queries', 'no_evidence', 'blocked', 'error'];
+  return {
+    round: typeof event.round === 'number' ? event.round : 0,
+    gapReason: gapReasons.includes(event.gapReason) ? event.gapReason : 'unknown',
+    missingSubgoalIds: Array.isArray(event.missingSubgoalIds) ? event.missingSubgoalIds.filter(subgoalId) : [],
+    queries: Array.isArray(event.queries)
+      ? event.queries.map((query) => ({ subgoalId: subgoalId(query?.subgoalId) ? query.subgoalId : '', text: REDACTED_TRACE_TEXT }))
+      : [],
+    evidenceIdsAdded: Array.isArray(event.evidenceIdsAdded) ? event.evidenceIdsAdded.filter(evidenceId) : [],
+    coverageBefore: coverage.includes(event.coverageBefore) ? event.coverageBefore : 'unknown',
+    coverageAfter: coverage.includes(event.coverageAfter) ? event.coverageAfter : 'unknown',
+    stoppedReason: stoppedReasons.includes(event.stoppedReason) ? event.stoppedReason : 'unknown',
+  };
+}
+
+function safeFollowUp(rewrite: FollowUpRewrite): FollowUpRewrite {
+  return { changed: rewrite.changed === true, ms: typeof rewrite.ms === 'number' ? rewrite.ms : 0,
+    original: REDACTED_TRACE_TEXT, rewritten: REDACTED_TRACE_TEXT };
+}
+
 export function getRunTrace(db: Db, runId: string): AdminTraceDetail | null {
   const row = db
     .prepare(
-      `SELECT t.*, r.question,
+      `SELECT t.*, (r.question IS NOT NULL) AS has_question,
               COALESCE(u.display_name, u.username) AS asker
          FROM ask_run_traces t
          LEFT JOIN users u ON u.id = t.user_id
@@ -239,6 +321,8 @@ export function getRunTrace(db: Db, runId: string): AdminTraceDetail | null {
     )
     .get(runId) as unknown as TraceDetailRow | undefined;
   if (row === undefined) return null;
+  const rewrite = row.follow_up_rewrite_json === null ? null
+    : parseJson<FollowUpRewrite | null>(row.follow_up_rewrite_json, null);
 
   return {
     ...toListItem(row),
@@ -249,7 +333,7 @@ export function getRunTrace(db: Db, runId: string): AdminTraceDetail | null {
     turn: row.turn,
     contextChars: row.context_chars,
     budget: parseJson<TraceBudget>(row.budget_json, emptyBudget()),
-    toolCalls: parseJson<TraceToolCall[]>(row.tool_trace_json, []),
+    toolCalls: parseTraceArray<TraceToolCall>(row.tool_trace_json).map(safeToolCall),
     retrievalHits: parseJson<TraceRetrievalHit[]>(row.retrieval_hits_json, []),
     recordEvidence: parseJson<TraceRecordEvidence[]>(row.record_evidence_json, []),
     citationMap: parseJson<TraceCitationRef[]>(row.citation_map_json, []),
@@ -260,13 +344,10 @@ export function getRunTrace(db: Db, runId: string): AdminTraceDetail | null {
         : parseJson<QuoteCheckSummary>(row.quote_checks_json, { checked: 0, passed: 0, failed: 0 }),
     plan: parseJson<TracePlan>(row.plan_json, { coverage: 'unknown', coverageRatio: 0, subgoals: [] }),
     rewriteRounds: row.rewrite_rounds,
-    rewriteEvents: parseJson<TraceRewriteEvent[]>(row.rewrite_events_json, []),
-    followUpRewrite:
-      row.follow_up_rewrite_json === null
-        ? null
-        : parseJson<FollowUpRewrite | null>(row.follow_up_rewrite_json, null),
-    warnings: parseJson<string[]>(row.warnings_json, []),
-    errors: parseJson<string[]>(row.errors_json, []),
+    rewriteEvents: parseTraceArray<TraceRewriteEvent>(row.rewrite_events_json).map(safeRewriteEvent),
+    followUpRewrite: rewrite === null ? null : safeFollowUp(rewrite),
+    warnings: redactTraceMessages(row.warnings_json),
+    errors: redactTraceMessages(row.errors_json),
     usageEvents: listUsageEventsOfRun(db, runId),
     recordedAt: row.recorded_at,
   };

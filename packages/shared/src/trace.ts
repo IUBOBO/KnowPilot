@@ -9,6 +9,7 @@
  *   Trace 不复制正文，也就不存在"从 Trace 绕过权限读原文"这条路。
  */
 import type { AskOutcome, ClaimVerdict, FollowUpRewrite, QuoteCheckSummary } from './answer.ts';
+import type { AskProcessLookup } from './ask-process.ts';
 
 /** 诊断口径的停止原因。取值与 `agent/budget.ts` 的 `ASK_STOP_REASONS` 一致。 */
 export type TraceStopReason =
@@ -58,8 +59,19 @@ export interface TraceBudget {
  * 页面要按时间顺序排、也要显示"第几秒做的"，而绝对时间还得再减一次运行起点。
  */
 export interface TraceToolCall {
+  /** Structured retrieval outcomes; absent on historical or unmeasured calls. */
+  retrieval?: {
+    order?: number;
+    mode: 'keyword' | 'semantic' | 'hybrid';
+    lookup?: AskProcessLookup;
+    ranking?: 'reranked' | 'fallback';
+    rankedCandidates?: number;
+    rankingMs?: number;
+    newEvidence: number;
+  };
   name: string;
-  /** 查询类工具归一后的查询词；提交答案这类工具没有 */
+  skipped?: 'context_budget';
+  /** 查询类工具的脱敏占位；提交答案这类工具没有。 */
   query: string | null;
   /** 检索/台账等返回的命中条数；取不到为 null（不填 0 冒充"零命中"） */
   hitCount: number | null;
@@ -80,7 +92,7 @@ export interface TracePlan {
   }[];
 }
 
-/** 检索改写事件。查询词是检索用的短语，不是证据原文。 */
+/** 检索改写事件。查询词在 Trace 视图中脱敏。 */
 export interface TraceRewriteEvent {
   round: number;
   gapReason: string;
@@ -130,7 +142,7 @@ export interface AdminTraceListItem {
   /** 提问人；null = 未记录归属（阶段 1–3 的公共历史，或未登录入口） */
   userId: string | null;
   asker: string | null;
-  /** 问题原文。来自 `ask_records` 的 JOIN；原始记录缺失时为 null */
+  /** 原始问题存在时为脱敏占位，记录缺失时为 null。 */
   question: string | null;
   outcome: AskOutcome;
   stopReason: TraceStopReason;
