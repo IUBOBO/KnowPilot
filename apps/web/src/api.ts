@@ -45,6 +45,8 @@ function synthetic(
  * 什么"。混在一起的话，将来给 fetch 加参数时容易把它们搞混。
  */
 export interface RequestOptions {
+  /** GET requests that revalidate evidence access can bypass browser caches. */
+  cache?: RequestCache;
   /**
    * 401 时不跳登录页，照常抛 `ApiError`。
    *
@@ -128,7 +130,11 @@ async function request<T>(path: string, init?: RequestInit, opts?: RequestOption
 }
 
 export function apiGet<T>(path: string, signal?: AbortSignal, opts?: RequestOptions): Promise<T> {
-  return request<T>(path, signal !== undefined ? { signal } : undefined, opts);
+  const init: RequestInit = {
+    ...(signal === undefined ? {} : { signal }),
+    ...(opts?.cache === undefined ? {} : { cache: opts.cache }),
+  };
+  return request<T>(path, init, opts);
 }
 
 export function apiPostForm<T>(path: string, form: FormData, signal?: AbortSignal): Promise<T> {

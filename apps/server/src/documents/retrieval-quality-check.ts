@@ -89,6 +89,30 @@ const marker = await searchDocuments(db, cfg, {
 });
 check('完整标记词不被宽松词匹配误报', marker.hits.length === 0);
 
+// Pipeline versions do not identify a document revision. Old chunks can share the same page and pipeline version
+// even if they were removed on different reindex operations.
+add('live-same-index', 'sop', '修订 C 当前正文。');
+db.prepare('UPDATE documents SET index_version = ? WHERE id = ?').run(INDEX_VERSION, 'doc-live-same-index');
+db.prepare('UPDATE doc_chunks SET page = 1 WHERE id = ?').run('live-same-index');
+db.prepare(`INSERT INTO doc_chunks (id, doc_id, ordinal, text, text_seg, page, token_count)
+  VALUES (?, ?, 1, ?, ?, 1, ?)`).run(
+  'live-same-index-neighbor', 'doc-live-same-index', '修订 C 当前邻块。', '', 12,
+);
+const insertArchive = db.prepare(`INSERT INTO archived_doc_chunks
+  (id, doc_id, ordinal, text, page, index_version, doc_title, material, archived_at)
+  VALUES (?, 'doc-live-same-index', 0, ?, 1, ?, '演示多次修订', 'sop', ?)`);
+insertArchive.run('old-same-index-a', '修订 A 历史正文。', INDEX_VERSION, '2026-10-23T00:00:00.000Z');
+insertArchive.run('old-same-index-b', '修订 B 历史正文。', INDEX_VERSION, '2026-10-24T00:00:00.000Z');
+const firstRevision = getChunkContext(db, 'old-same-index-a');
+const secondRevision = getChunkContext(db, 'old-same-index-b');
+check('同页同索引版本的多次历史修订各自独立',
+  firstRevision?.sourceVersion === String(INDEX_VERSION) && secondRevision?.sourceVersion === String(INDEX_VERSION) &&
+  firstRevision.chunk.text === '修订 A 历史正文。' && firstRevision.siblings.map((item) => item.id).join(',') === 'old-same-index-a' &&
+  secondRevision.chunk.text === '修订 B 历史正文。' && secondRevision.siblings.map((item) => item.id).join(',') === 'old-same-index-b');
+const liveRevision = getChunkContext(db, 'live-same-index');
+check('当前修订保留可验证的同页上下文',
+  liveRevision?.siblings.map((item) => item.id).join(',') === 'live-same-index,live-same-index-neighbor');
+
 const tempRoot = mkdtempSync(join(tmpdir(), 'knowpilot-reindex-quality-'));
 try {
   const file = join(tempRoot, 'fixture.md');
@@ -117,7 +141,11 @@ try {
   const changed = ids();
   check('修改一节后未变章节沿用 id', before[0]?.id === changed[0]?.id);
   check('修改一节后变动章节换 id', before[1]?.id !== changed[1]?.id);
+  const current = changed[1] === undefined ? null : getChunkContext(db, changed[1].id);
   const archived = before[1] === undefined ? null : getChunkContext(db, before[1].id);
+  check('当前与历史原文均返回实际来源版本',
+    current?.sourceVersion === String(INDEX_VERSION) && current.archivedIndexVersion === undefined &&
+    archived?.sourceVersion === String(INDEX_VERSION));
   check('旧引用仍可读取历史原文并标明版本',
     archived?.archivedIndexVersion === INDEX_VERSION && archived.chunk.text.includes('低温条件下'));
   const oldSearch = await searchDocuments(db, cfg, { query: '低温条件下', mode: 'keyword', limit: 8 });

@@ -860,6 +860,16 @@ export function updateManualRanking(
  * 它会以为库里只有这一条，于是把另一个体系也说成不存在。
  * 上限 20 条：分区一年一更、体系两三个，正常期刊不会有几十条。
  */
+export function getRankingByPeriod(
+  db: Db, journalId: string, year: number, system: string, category: string,
+): JournalRanking | null {
+  const row = db.prepare(
+    `SELECT ${RANKING_COLUMNS} FROM journal_rankings
+     WHERE journal_id = ? AND year = ? AND system = ? AND category = ?`,
+  ).get(journalId, year, system, category) as unknown as RankingRow | undefined;
+  return row === undefined ? null : toRanking(row);
+}
+
 export function listRankings(db: Db, journalId: string, limit: number): JournalRanking[] {
   const rows = db
     .prepare(

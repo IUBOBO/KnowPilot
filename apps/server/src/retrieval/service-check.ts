@@ -3,14 +3,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
-  INDEX_VERSION, segmentForIndex, type DocumentRetrievalRequest, type RetrievalResponseV1, type SearchResponse,
+  INDEX_VERSION, segmentForIndex, type DocumentRetrievalRequest, type RecordRetrievalHit, type RetrievalResponseV1, type SearchResponse,
 } from '@knowpilot/shared';
 import { createApp } from '../app.ts';
 import { EvidencePool } from '../agent/evidence.ts';
 import { createLabModels } from '../agent/models.ts';
 import { createPeopleTool, createSubmissionsTool } from '../agent/live-tools.ts';
 import { createRetrieveTool } from '../agent/tools.ts';
-import { SESSION_COOKIE, createSession } from '../auth/session.ts';
+import { SESSION_COOKIE, createSession, deleteSession } from '../auth/session.ts';
 import { submissionScope } from '../auth/scope.ts';
 import { embeddingModelKey, loadConfig, onnxPath } from '../config.ts';
 import { openDb } from '../db/index.ts';
@@ -245,6 +245,60 @@ try {
     assert.equal((await request(query)).status, 400);
   }
   console.log('✓ Reject unsupported version, invalid paging, source, strategy and scope');
+
+  const assetPath = '/api/v1/code-assets/fixture-asset/evidence';
+  const journalId = 'fixture-journal';
+  const rankingPath = '/api/v1/journals/' + journalId + '/rankings/evidence?';
+  const period = (year: string, category: string) => rankingPath + new URLSearchParams({ year, system: 'JCR', category });
+  const fetchEvidence = (path: string, authenticated = true) =>
+    app.request(path, authenticated ? { headers: { cookie } } : {});
+  db.prepare('INSERT INTO code_assets(id, name, location, host, access_note, notes, profile, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?)')
+    .run('fixture-asset', '合成数据登记', 'FIXTURE_PATH', 'FIXTURE_HOST', 'FIXTURE_ACCESS', 'FIXTURE_NOTES',
+      JSON.stringify({ version: 'fixture-version', format: 'CSV', source: 'FIXTURE_SOURCE' }), now, now);
+  db.prepare('INSERT INTO journals(id, name, created_at) VALUES(?,?,?)').run(journalId, '合成期刊', now);
+  const insertRank = db.prepare(
+    `INSERT INTO journal_rankings(id, journal_id, year, system, category, rank, source, fetched_at, created_at)
+     VALUES (?,?,?,'JCR',?,?,'manual',?,?)`,
+  );
+  for (let i = 0; i < 52; i++) insertRank.run('current-' + i, journalId, 2026, '维度' + i, 'Q1', now, now);
+  insertRank.run('old-period', journalId, 2021, '合成:特殊维度', 'Q3', now, now);
+  insertRank.run('blank-dimension', journalId, 2021, '', 'Q4', now, now);
+
+  async function exact(path: string): Promise<RecordRetrievalHit> {
+    const response = await fetchEvidence(path);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    return await response.json() as RecordRetrievalHit;
+  }
+  const asset = await exact(assetPath);
+  assert.equal(asset.recordId, 'fixture-asset');
+  assert.equal(asset.sourceVersion, now);
+  assert.ok(asset.fields.some((field) => field.value === 'fixture-version'));
+  assert.doesNotMatch(JSON.stringify(asset), /FIXTURE_PATH|FIXTURE_HOST|FIXTURE_ACCESS|FIXTURE_NOTES|FIXTURE_SOURCE/u);
+  assert.equal((await fetchEvidence('/api/v1/code-assets/missing/evidence')).status, 404);
+
+  const oldPeriod = period('2021', '合成:特殊维度');
+  const old = await exact(oldPeriod);
+  assert.equal(old.recordId, 'fixture-journal:2021:JCR:合成:特殊维度');
+  assert.equal(old.sourceVersion, '2021 JCR 合成:特殊维度');
+  assert.ok(old.fields.some((field) => field.label === '分区' && field.value === 'Q3'));
+  db.prepare("UPDATE journal_rankings SET rank = 'Q2' WHERE id = 'old-period'").run();
+  const revised = await exact(oldPeriod);
+  assert.equal(revised.sourceVersion, old.sourceVersion);
+  assert.ok(revised.fields.some((field) => field.label === '分区' && field.value === 'Q2'));
+  assert.equal((await exact(period('2021', ''))).recordId, 'fixture-journal:2021:JCR:');
+  assert.equal((await fetchEvidence(period('2021', '合成'))).status, 404);
+  assert.equal((await fetchEvidence(period('2021x', '合成:特殊维度'))).status, 400);
+  assert.equal((await fetchEvidence(rankingPath + 'year=2021&system=JCR')).status, 400);
+
+  for (const path of [assetPath, oldPeriod]) assert.equal((await fetchEvidence(path, false)).status, 401);
+  assert.equal(deleteSession(db, session.token), true);
+  for (const path of [assetPath, oldPeriod]) {
+    const denied = await fetchEvidence(path);
+    assert.equal(denied.status, 401);
+    assert.doesNotMatch(await denied.text(), /合成数据登记|合成期刊|特殊维度|FIXTURE_PATH/u);
+  }
+  console.log('✓ Authorized exact dataset and ranking evidence, old year and dimensions, current revision, and revoked session');
 } finally {
   db.close();
 }

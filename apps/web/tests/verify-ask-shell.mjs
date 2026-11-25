@@ -11,8 +11,10 @@ const runner = process.env.KP_UI_PLAYWRIGHT;
 assert(runner, 'Set KP_UI_PLAYWRIGHT to the installed Playwright index.mjs path');
 const { chromium } = await import(pathToFileURL(resolve(runner)).href);
 const outputs = resolve(process.env.KP_UI_ARTIFACTS ?? resolve(here, '../../tmp/v2-02/screenshots'));
-const origin = 'http://127.0.0.1:4382';
-const mockOrigin = 'http://127.0.0.1:4383';
+const webPort = Number(process.env.KP_UI_WEB_PORT ?? 4382);
+const mockPort = Number(process.env.KP_UI_MOCK_PORT ?? 4383);
+const origin = 'http://127.0.0.1:' + webPort;
+const mockOrigin = 'http://127.0.0.1:' + mockPort;
 const now = '2026-11-24T12:00:00.000Z';
 const questions = {
   report: '请整理合成样例的仪器对照报告',
@@ -26,6 +28,12 @@ const citation = {
   id: 'E1', sourceType: 'document', documentId: doc.id, documentTitle: doc.title, material: doc.material,
   page: 2, sectionPath: chunk.sectionPath, chunkId: chunk.id, score: 1, excerpt: chunk.text,
   quote: '先记录空载读数，再进行三轮对照。', originalChars: chunk.text.length, sourceVersion: '1',
+};
+const { sourceVersion: _legacyVersion, ...legacyCitation } = citation;
+const dataset = {
+  kind: 'record', recordType: 'M-CODE', recordId: 'fixture-dataset', recordTitle: '合成仪器数据集',
+  sourceVersion: now, recordUpdatedAt: now, queryTime: now,
+  excerpt: '', fields: [{ label: '登记版本', value: '样本版' }], matchedBy: ['structured'],
 };
 const LONG = 'SampleColumn'.repeat(16);
 const INERT_HTML = '<img src="/synthetic-unsafe-image" onerror="window.fixtureHtmlRan=true">';
@@ -65,13 +73,22 @@ const report = [
   '',
   ...Array.from({ length: 16 }, (_, i) => '第 ' + (i + 1) + ' 节建议多次测量，保留对照条件和原始读数。'.repeat(5)),
 ].join('\n');
+const completedProcess = {
+  version: 1,
+  steps: [{ order: 0, phase: 'retrieval', source: 'documents', atMs: 1, state: 'done',
+    durationMs: 400, candidates: 1, newEvidence: 1, actualMode: 'keyword' }],
+  counts: { candidates: 1, pooled: 1, documents: 1, modelVisible: 1, citations: 1 },
+};
 const verification = { status: 'verified', counts: { supported: 0, contradicted: 0, insufficient: 0, review_required: 0 }, claims: [] };
 
 function answer(runId, question, body, delivery = {}) {
   return {
     runId, question,
+    ...(body === report ? { process: completedProcess } : {}),
     answer: {
-      answer: body, citations: [citation], evidenceGaps: [], limits: [], confidenceNotes: [], conflicts: [],
+      answer: body, citations: [runId === 'fixture-interrupted' ? legacyCitation : citation],
+      ...(body === report ? { blocks: { version: 1, items: [{ kind: 'summary', text: '合成动态块', evidenceIds: ['E1'] }] } } : {}),
+      evidenceGaps: [], limits: [], confidenceNotes: [], conflicts: [],
       verification, warnings: [], usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 },
       rounds: 1, durationMs: 1200,
     },
@@ -86,12 +103,13 @@ function json(response, payload, status = 200) {
 
 const activity = new EventEmitter();
 const calls = [];
+let revoked = false;
 const server = createServer(async (request, response) => {
-  const { pathname } = new URL(request.url, mockOrigin);
+  const { pathname, searchParams } = new URL(request.url, mockOrigin);
   const parts = [];
   for await (const part of request) parts.push(part);
   const posted = parts.length ? JSON.parse(Buffer.concat(parts).toString()) : null;
-  const call = { pathname, method: request.method, posted };
+  const call = { pathname, method: request.method, posted, cache: request.headers['cache-control'] };
   calls.push(call);
 
   if (pathname === '/api/v1/auth/me') return json(response, {
@@ -100,7 +118,21 @@ const server = createServer(async (request, response) => {
   });
   if (pathname === '/api/v1/documents') return json(response, { items: [], hasMore: false });
   if (pathname === '/api/v1/submissions') return json(response, { items: [] });
-  if (pathname === '/api/v1/chunks/fixture-chunk') return json(response, { document: doc, chunk, siblings: [chunk], archivedIndexVersion: 1 });
+  if (pathname === '/api/v1/chunks/fixture-chunk') {
+    if (revoked) return json(response, { error: {
+      code: 'permission_denied', title: '合成撤权', message: '合成撤权内部信息',
+      retryable: false, requestId: 'fixture',
+    } }, 403);
+    return json(response, { document: doc, chunk, siblings: [chunk], archivedIndexVersion: 1, sourceVersion: '1' });
+  }
+  if (pathname === '/api/v1/quick-search') return json(response, {
+    items: [{ kind: 'dataset', id: dataset.recordId, title: dataset.recordTitle, updatedAt: now }],
+  });
+  if (pathname === '/api/v1/search' && searchParams.get('contractVersion') === '1') return json(response, {
+    version: 1, hits: [{ kind: 'document', documentId: doc.id, chunkId: chunk.id,
+      documentTitle: doc.title, sourceVersion: '1', excerpt: citation.quote, segments: [{ text: citation.quote, hit: true }] }],
+  });
+  if (pathname === '/api/v1/code-assets/fixture-dataset/evidence') return json(response, dataset);
   if (pathname.endsWith('/review')) return json(response, {
     claims: [{ statement: '对照条件已核对', verdict: 'supported', reason: '模拟复核依据', evidence: [{ citationId: 'E1', quote: citation.quote }] }],
     costUsd: null, unavailableSourceCount: 0,
@@ -174,7 +206,7 @@ try {
   server.listen(new URL(mockOrigin).port, '127.0.0.1');
   await once(server, 'listening');
   frontend = await preview({ configFile: false, root: here, preview: {
-    host: '127.0.0.1', port: 4382, strictPort: true, proxy: { '/api': { target: mockOrigin } },
+    host: '127.0.0.1', port: webPort, strictPort: true, proxy: { '/api': { target: mockOrigin } },
   } });
   const options = process.env.KP_UI_BROWSER ? { executablePath: process.env.KP_UI_BROWSER } : {};
   browser = await chromium.launch({ headless: true, ...options });
@@ -259,13 +291,45 @@ try {
   await focusIs(open);
   assert(Math.abs((await article.boundingBox()).width - wide) < 2);
 
+  const reader = desktop.getByRole('complementary', { name: '证据阅读器' });
+  const tableSource = article.getByRole('table').getByRole('link', { name: '来源 1：' + doc.title });
+  const block = article.getByRole('heading', { name: '摘要', exact: true }).locator('..');
+  const blockSource = block.getByRole('link', { name: '来源 1：' + doc.title });
+  const followDraft = desktop.getByRole('textbox', { name: /你的问题|继续追问/ });
+  await followDraft.fill('尚未发送的合成追问');
+  await source.scrollIntoViewIfNeeded();
+  const scrollPosition = await desktop.evaluate(() => window.scrollY);
+  for (const trigger of [source, tableSource, blockSource]) {
+    await trigger.click();
+    await visible(reader.getByRole('heading', { name: doc.title }));
+    await visible(reader.getByText(/历史原文/u));
+    assert.equal(await reader.locator('mark').textContent(), citation.quote);
+    assert.equal(new URL(desktop.url()).pathname, '/ask');
+    assert.equal(await followDraft.inputValue(), '尚未发送的合成追问');
+    if (trigger === source) {
+      await desktop.screenshot({ path: resolve(outputs, 'ask-evidence-reader.png'), animations: 'disabled' });
+    }
+    await desktop.keyboard.press('Escape');
+    await reader.waitFor({ state: 'hidden' });
+    await focusIs(trigger);
+    if (trigger === source) assert.equal(await desktop.evaluate(() => window.scrollY), scrollPosition);
+  }
+  await open.click();
+  await aside.getByRole('link', { name: '查看原文' }).click();
+  await visible(reader.getByRole('heading', { name: doc.title }));
+  await desktop.keyboard.press('Escape');
+  await focusIs(open);
+  revoked = true;
+  const oldReads = calls.filter((call) => call.pathname === '/api/v1/chunks/fixture-chunk').length;
   await source.click();
-  await visible(desktop.getByRole('heading', { name: doc.title }));
-  await visible(desktop.getByText(/历史原文片段/u));
-  await desktop.getByRole('link', { name: /返回知识问答/u }).click();
+  await visible(reader.getByText(/此证据不可读取/u));
+  assert.doesNotMatch(await reader.innerText(), /合成撤权|合成原文|仪器校准手册/u);
+  assert.equal(calls.filter((call) => call.pathname === '/api/v1/chunks/fixture-chunk').length, oldReads + 1);
+  await desktop.keyboard.press('Escape');
+  revoked = false;
   await visible(article.getByRole('heading', { name: '仪器读数与误差' }));
-  await desktop.getByText('查询过程', { exact: true }).click();
-  await visible(desktop.getByText(/找到 1 条/u));
+  await desktop.locator('summary').filter({ hasText: /查询过程/u }).click();
+  await visible(desktop.getByText(/候选 1/u).first());
   await article.getByRole('button', { name: '复核依据' }).click();
   await visible(article.getByRole('region', { name: '模型复核结果' }).getByText('原文支持'));
   assert(calls.some((call) => call.pathname.endsWith('/fixture-report/review') && call.posted.answer === report &&
@@ -293,7 +357,10 @@ try {
   await aside.waitFor({ state: 'hidden' });
   await focusIs(desktop.getByRole('heading', { name: questions.report }));
   await visible(article.getByRole('heading', { name: '仪器读数与误差' }));
+  await source.click();
+  await visible(reader.locator('mark'));
   await desktop.getByRole('button', { name: '返回最新问答' }).click();
+  await reader.waitFor({ state: 'hidden' });
   await visible(article.getByText('合成续跑完成。'));
 
   const canceled = await ask(desktop, questions.canceled);
@@ -317,9 +384,34 @@ try {
   await desktop.getByRole('button', { name: '重试' }).click();
   const retry = await retried;
   assert.deepEqual(retry.posted, failing.posted);
-  terminal(retry, 'interrupted', answer('fixture-interrupted', questions.failed, '合成中断。', { status: 'interrupted', stopReason: 'wall' }));
+  terminal(retry, 'interrupted', answer('fixture-interrupted', questions.failed, '合成中断。 [E1]', { status: 'interrupted', stopReason: 'wall' }));
   await visible(article.getByText('查询中断。可以继续查找。'));
   assert.equal(await desktop.getByRole('button', { name: '继续查找依据' }).count(), 0);
+
+  await article.getByRole('link', { name: '来源 1：' + doc.title }).click();
+  await visible(desktop.getByRole('heading', { name: doc.title }));
+  assert.equal(new URL(desktop.url()).pathname, '/chunk/fixture-chunk');
+  assert.equal(await reader.count(), 0);
+  await desktop.getByRole('link', { name: /返回知识问答/u }).click();
+  await visible(article.getByText('查询中断。可以继续查找。'));
+
+  const searchUrl = new URL('/search', origin);
+  searchUrl.searchParams.set('q', '仪器');
+  await desktop.goto(searchUrl.href);
+  const documentHit = desktop.getByRole('link', { name: doc.title });
+  await documentHit.click();
+  await visible(reader.getByRole('heading', { name: doc.title }));
+  assert.equal(await reader.locator('mark').textContent(), citation.quote);
+  assert.equal(new URL(desktop.url()).searchParams.get('q'), '仪器');
+  await desktop.keyboard.press('Escape');
+  await focusIs(documentHit);
+  await desktop.getByRole('link', { name: dataset.recordTitle }).click();
+  await visible(reader.getByText('样本版', { exact: true }));
+  assert.equal(await reader.getByRole('link', { name: '查看完整记录' }).getAttribute('href'), '/datasets?focus=fixture-dataset');
+  await desktop.getByRole('searchbox', { name: '关键词' }).fill('更换检索词');
+  await desktop.getByRole('button', { name: '搜索', exact: true }).click();
+  await reader.waitFor({ state: 'hidden' });
+  assert.equal(new URL(desktop.url()).searchParams.get('q'), '更换检索词');
 
   const mobile = await makePage({ width: 390, height: 844 });
   const narrow = await ask(mobile, questions.report);
@@ -355,6 +447,16 @@ try {
   await modal.waitFor({ state: 'hidden' });
   await focusIs(narrowTrigger);
   assert.equal(await narrowTrigger.getAttribute('aria-expanded'), 'false');
+  const mobileSource = narrowArticle.getByRole('table').getByRole('link', { name: '来源 1：' + doc.title });
+  await mobileSource.click();
+  const mobileReader = mobile.getByRole('dialog', { name: '证据阅读器' });
+  await visible(mobileReader.locator('mark'));
+  const closeReader = mobileReader.getByRole('button', { name: '关闭阅读器' });
+  await focusIs(closeReader);
+  await mobile.screenshot({ path: resolve(outputs, 'mobile-evidence-reader.png'), animations: 'disabled' });
+  await mobile.keyboard.press('Escape');
+  await mobileReader.waitFor({ state: 'hidden' });
+  await focusIs(mobileSource);
   await noPageOverflow(mobile);
   await mobile.getByRole('link', { name: '投稿台账' }).click();
   await visible(mobile.getByRole('heading', { name: '投稿台账' }));
@@ -363,8 +465,8 @@ try {
   assert.deepEqual(errors, []);
   assert.deepEqual(external, []);
   assert(!calls.some((call) => call.pathname === '/synthetic-unsafe-image'));
-  console.log('PASS: responsive layout, safe Markdown/MathML, streamed draft/final/error/cancel, source navigation, review, feedback, history, resume, and keyboard focus');
-  console.log('Screenshots: desktop.png, narrow.png, narrow-reader.png');
+  console.log('PASS: responsive layout, safe Markdown/MathML, streamed draft/final/error/cancel, source navigation, review, feedback, history, resume, and keyboard focus; shared body/table/block and search evidence, revocation, and archive');
+  console.log('Screenshots: desktop.png, narrow.png, narrow-reader.png, ask-evidence-reader.png, mobile-evidence-reader.png');
 } finally {
   await browser?.close();
   await frontend?.close();

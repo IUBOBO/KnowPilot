@@ -53,7 +53,12 @@ function AnswerMath({ source, display = false }: { source: string; display?: boo
     : formula;
 }
 
-export function FinalAnswerBody({ text, byId }: { text: string; byId: ReadonlyMap<string, Citation> }) {
+export function FinalAnswerBody({ text, byId, citationOpen }: {
+  text: string;
+  byId: ReadonlyMap<string, Citation>;
+  citationOpen?: CitationOpenContext;
+}) {
+  const sources = citationOpen === undefined ? { byId } : { byId, citationOpen };
   const lines = text.split(/\r?\n/u);
   let detailAt = -1;
   for (let i = 0; i < lines.length;) {
@@ -70,16 +75,16 @@ export function FinalAnswerBody({ text, byId }: { text: string; byId: ReadonlyMa
     }
     i += 1;
   }
-  if (detailAt <= 0) return <AnswerBody text={text} byId={byId} />;
+  if (detailAt <= 0) return <AnswerBody text={text} {...sources} />;
 
   const details = lines.slice(detailAt + 1).join('\n').trim();
   return (
     <>
-      <AnswerBody text={lines.slice(0, detailAt).join('\n')} byId={byId} />
+      <AnswerBody text={lines.slice(0, detailAt).join('\n')} {...sources} />
       {details !== '' && (
         <details className="answer-notes">
           <summary>详细说明</summary>
-          <AnswerBody text={details} byId={byId} />
+          <AnswerBody text={details} {...sources} />
         </details>
       )}
     </>

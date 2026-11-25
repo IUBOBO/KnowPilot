@@ -2,21 +2,25 @@ import type { MouseEvent, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { citationEvidenceRequest, evidenceMarker, formatSectionPath, MATERIAL_LABELS, RECORD_TYPE_LABELS,
   type Citation, type DocumentCitation, type OpenEvidence, type RecordCitation } from '@knowpilot/shared';
+import { openEvidenceLink } from '../../components/evidence/EvidenceViewer.tsx';
 import { fmtDateTime, fmtQueryTime } from '../../format.ts';
 
 const EXCERPT_PREVIEW = 240;
 const CITE_POP_PREVIEW = 140;
 
-export function AnswerSources({ citations }: { citations: readonly Citation[] }) {
+export function AnswerSources({ citations, citationOpen }: {
+  citations: readonly Citation[];
+  citationOpen?: CitationOpenContext;
+}) {
   return (
     <>
       <p className="dim drawer-lead">点击文中的编号，可以直接查看对应的原文或记录。</p>
-      {citations.map((citation) => <CitationCard key={citation.id} citation={citation} />)}
+      {citations.map((citation) => <CitationCard key={citation.id} citation={citation} citationOpen={citationOpen} />)}
     </>
   );
 }
 
-function sourceHref(citation: Citation): string | undefined {
+export function sourceHref(citation: Citation): string | undefined {
   if (citation.sourceType === 'document') return `/chunk/${encodeURIComponent(citation.chunkId)}`;
   const id = encodeURIComponent(citation.recordId);
   const title = encodeURIComponent(citation.recordTitle);
@@ -36,10 +40,10 @@ export interface CitationOpenContext {
 }
 
 function openCitation(event: MouseEvent<HTMLAnchorElement>, citation: Citation, context: CitationOpenContext) {
-  if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
-      event.defaultPrevented) return;
-  const request = citationEvidenceRequest(context.runId, citation);
-  if (request !== null && context.onOpenEvidence(request)) event.preventDefault();
+  openEvidenceLink(event, () => {
+    const request = citationEvidenceRequest(context.runId, citation);
+    return request !== null && context.onOpenEvidence(request);
+  });
 }
 
 export function renderAnswerCitations(
@@ -119,12 +123,17 @@ function CitationPopover({ citation }: { citation: Citation }) {
   );
 }
 
-function CitationCard({ citation }: { citation: Citation }) {
-  if (citation.sourceType === 'record') return <RecordCitationCard citation={citation} />;
-  return <DocumentCitationCard citation={citation} />;
+function CitationCard({ citation, citationOpen }: { citation: Citation; citationOpen: CitationOpenContext | undefined }) {
+  const onOpen = citationOpen === undefined ? undefined :
+    (event: MouseEvent<HTMLAnchorElement>) => openCitation(event, citation, citationOpen);
+  if (citation.sourceType === 'record') return <RecordCitationCard citation={citation} onOpen={onOpen} />;
+  return <DocumentCitationCard citation={citation} onOpen={onOpen} />;
 }
 
-function DocumentCitationCard({ citation }: { citation: DocumentCitation }) {
+function DocumentCitationCard({ citation, onOpen }: {
+  citation: DocumentCitation;
+  onOpen: ((event: MouseEvent<HTMLAnchorElement>) => void) | undefined;
+}) {
   const excerpt = citation.quote ?? citation.excerpt;
   const truncated = excerpt.length > EXCERPT_PREVIEW;
   return (
@@ -137,6 +146,7 @@ function DocumentCitationCard({ citation }: { citation: DocumentCitation }) {
         <Link
           className="side-link"
           to={sourceHref(citation) ?? '/ask'}
+          onClick={onOpen}
         >
           查看原文
         </Link>
@@ -160,7 +170,10 @@ function DocumentCitationCard({ citation }: { citation: DocumentCitation }) {
  * 底部**必须**标出查询时点：这张卡片说的是"查的那一刻"的事，
  * 不写时点，用户无法判断它有多新 —— 而"新不新"正是这类引用的全部价值。
  */
-function RecordCitationCard({ citation }: { citation: RecordCitation }) {
+function RecordCitationCard({ citation, onOpen }: {
+  citation: RecordCitation;
+  onOpen: ((event: MouseEvent<HTMLAnchorElement>) => void) | undefined;
+}) {
   const href = sourceHref(citation);
   return (
     <div className="card hit">
@@ -173,6 +186,7 @@ function RecordCitationCard({ citation }: { citation: RecordCitation }) {
           <Link
             className="side-link"
             to={href}
+            onClick={onOpen}
           >
             查看记录
           </Link>

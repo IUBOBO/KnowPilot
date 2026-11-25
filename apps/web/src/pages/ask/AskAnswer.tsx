@@ -9,7 +9,7 @@ import { ApiError, apiPost, isAbort, toApiError } from '../../api.ts';
 import { ErrorNotice } from '../../components/ErrorNotice.tsx';
 import { formatCnyFromUsd } from '../../currency.ts';
 import { FinalAnswerBody } from './AnswerMarkdown.tsx';
-import { renderAnswerCitations } from './AnswerSources.tsx';
+import { renderAnswerCitations, type CitationOpenContext } from './AnswerSources.tsx';
 import { formatElapsed } from './AskProcess.tsx';
 
 const AnswerBlocks = lazy(() => import('./AnswerBlocks.tsx'));
@@ -30,6 +30,7 @@ interface AskAnswerProps {
 export function AskAnswer({
   result, byId, consent, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks, onOpenEvidence,
 }: AskAnswerProps) {
+  const sources = onOpenEvidence === undefined ? {} : { citationOpen: { runId: result.runId, onOpenEvidence } };
   return (
     <article className="card ask-answer-article" aria-label="回答">
       <h2 className="ask-answer-title">回答</h2>
@@ -41,7 +42,7 @@ export function AskAnswer({
           追问按上文理解为：<b>{result.followUpRewrite.rewritten}</b>
         </p>
       )}
-      <FinalAnswerBody text={result.answer.answer} byId={byId} />
+      <FinalAnswerBody text={result.answer.answer} byId={byId} {...sources} />
       {blocks ?? (result.answer.blocks !== undefined && (
         <Suspense fallback={null}>
           <AnswerBlocks response={result} {...(onOpenEvidence === undefined ? {} : { onOpenEvidence })} />
@@ -67,7 +68,7 @@ export function AskAnswer({
         </div>
       ) : null}
       {result.answer.citations.length > 0 && (
-        <AnswerEvidenceReview key={`review-${result.runId}`} response={result} consent={consent} byId={byId} />
+        <AnswerEvidenceReview key={`review-${result.runId}`} response={result} consent={consent} byId={byId} {...sources} />
       )}
       {/* O16：确定性出口。服务端只在"某类记录查询 0 命中"或
           "整次回答没有任何引用且列了依据缺口"时给；前端不自己推断。 */}
@@ -96,7 +97,8 @@ export function AskAnswer({
   );
 }
 
-function AnswerEvidenceReview({ response, consent, byId }: {
+function AnswerEvidenceReview({ response, consent, byId, citationOpen }: {
+  citationOpen?: CitationOpenContext;
   response: AskResponse;
   consent: boolean;
   byId: ReadonlyMap<string, Citation>;
@@ -156,7 +158,7 @@ function AnswerEvidenceReview({ response, consent, byId }: {
                 <p>{claim.reason}</p>
                 {claim.evidence.map((source, sourceIndex) => (
                   <blockquote key={sourceIndex}>
-                    {source.quote}{' '}{renderAnswerCitations(`[${source.citationId}]`, byId)}
+                    {source.quote}{' '}{renderAnswerCitations(`[${source.citationId}]`, byId, citationOpen)}
                   </blockquote>
                 ))}
               </li>

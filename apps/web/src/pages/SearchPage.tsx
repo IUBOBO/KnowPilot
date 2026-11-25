@@ -1,21 +1,57 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   QUICK_SEARCH_KINDS, QUICK_SEARCH_LABELS,
-  type QuickSearchKind, type QuickSearchResponse, type SearchResponse,
+  type DocumentRetrievalHit, type EvidenceOpenRequest, type QuickSearchHit, type QuickSearchKind,
+  type QuickSearchResponse, type RecordType, type RetrievalResponseV1,
 } from '@knowpilot/shared';
 import { apiGet, toApiError } from '../api.ts';
 import { useAuth } from '../auth.tsx';
 import { PageTitle } from '../components/PageTitle.tsx';
+import { EvidenceViewer, openEvidenceLink, useEvidenceViewer } from '../components/evidence/EvidenceViewer.tsx';
 import { fmtDateTime } from '../format.ts';
 import { searchHitHref } from '../search-links.ts';
+
+// A journal title alone does not identify a ranking period. Keep its journal link.
+const searchRecordTypes: Partial<Record<QuickSearchKind, RecordType>> = {
+  person: 'M-PERSON', patent: 'M-PATENT', thesis: 'M-THESIS', submission: 'M-SUBMIT', dataset: 'M-CODE',
+};
+
+function recordRequest(hit: QuickSearchHit): EvidenceOpenRequest | undefined {
+  const recordType = searchRecordTypes[hit.kind];
+  if (recordType === undefined || !hit.updatedAt) return undefined;
+  return { version: 1, locator: { kind: 'record', recordType, recordId: hit.id, sourceVersion: hit.updatedAt } };
+}
+
+function passageRequest(hit: DocumentRetrievalHit): EvidenceOpenRequest {
+  const { documentId, chunkId, sourceVersion } = hit;
+  return { version: 1, locator: { kind: 'document', documentId, chunkId, sourceVersion } };
+}
+
+interface SearchResults {
+  scope: string;
+  records: QuickSearchResponse['items'];
+  passages: readonly DocumentRetrievalHit[];
+  errors: string[];
+}
 
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get('q')?.trim() ?? '';
   const filter = QUICK_SEARCH_KINDS.find((kind) => kind === params.get('kind')) ?? 'all';
-  const allowDocuments = useAuth().can('knowledge.read');
-  const [results, setResults] = useState<{ records: QuickSearchResponse['items']; passages: SearchResponse['hits']; errors: string[] } | null>(null);
+  const { can, user } = useAuth();
+  const allowDocuments = can('knowledge.read');
+  const scope = JSON.stringify([user?.id, user?.role, allowDocuments, filter, query]);
+  const [loaded, setResults] = useState<SearchResults | null>(null);
+  const results = loaded?.scope === scope ? loaded : null;
+  const catalog = useMemo(() => results === null ? [] : [
+    ...results.records.flatMap((hit) => {
+      const request = recordRequest(hit);
+      return request === undefined ? [] : [{ request, recordHref: searchHitHref(hit) }];
+    }),
+    ...results.passages.map((hit) => ({ request: passageRequest(hit), quote: hit.excerpt })),
+  ], [results]);
+  const evidence = useEvidenceViewer(catalog, scope);
 
   useEffect(() => {
     setResults(null);
@@ -26,19 +62,21 @@ export function SearchPage() {
     void Promise.allSettled([
       apiGet<QuickSearchResponse>(`/api/v1/quick-search?q=${q}${kind}&limit=100`, request.signal),
       allowDocuments && (filter === 'all' || filter === 'document')
-        ? apiGet<SearchResponse>(`/api/v1/search?q=${q}&mode=keyword&limit=30`, request.signal)
+        ? apiGet<RetrievalResponseV1>(`/api/v1/search?contractVersion=1&q=${q}&mode=keyword&limit=30&candidateLimit=30`, request.signal)
         : Promise.resolve(null),
     ]).then(([records, passages]) => {
       if (request.signal.aborted) return;
       setResults({
+        scope,
         records: records.status === 'fulfilled' ? records.value.items : [],
-        passages: passages.status === 'fulfilled' ? passages.value?.hits ?? [] : [],
+        passages: passages.status === 'fulfilled'
+          ? passages.value?.hits.filter((hit) => hit.kind === 'document') ?? [] : [],
         errors: [records, passages].flatMap((result) => result.status === 'rejected'
           ? [toApiError(result.reason).body.error.message] : []),
       });
     });
     return () => request.abort();
-  }, [allowDocuments, filter, query]);
+  }, [allowDocuments, filter, query, scope]);
 
   function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -52,7 +90,7 @@ export function SearchPage() {
   }
 
   const kinds: readonly QuickSearchKind[] = QUICK_SEARCH_KINDS;
-  return <>
+  return <EvidenceViewer reader={evidence.reader}>
     <div className="page-head"><PageTitle icon="search">统一检索</PageTitle></div>
     <div className="card">
       <form className="form-row" key={params.toString()} onSubmit={search}>
@@ -79,7 +117,10 @@ export function SearchPage() {
       return <section className="card" key={kind}>
         <h2>{QUICK_SEARCH_LABELS[kind]}</h2>
         <ul className="sub-list">{hits.map((hit) => <li className="sub-item" key={hit.id}>
-          <Link className="hit-title" to={searchHitHref(hit)}>{hit.title}</Link>
+          <Link className="hit-title" to={searchHitHref(hit)} onClick={(event) => openEvidenceLink(event, () => {
+            const request = recordRequest(hit);
+            return request !== undefined && evidence.onOpenEvidence(request);
+          })}>{hit.title}</Link>
           {hit.detail && <span className="dim"> · {hit.detail}</span>}
           {hit.updatedAt && <div className="dim">更新于 <time dateTime={hit.updatedAt}>{fmtDateTime(hit.updatedAt)}</time></div>}
         </li>)}</ul>
@@ -89,10 +130,11 @@ export function SearchPage() {
     {results && results.passages.length > 0 && <section className="card">
       <h2>文档正文</h2>
       <ul className="sub-list">{results.passages.map((hit) => <li className="sub-item" key={hit.chunkId}>
-        <Link className="hit-title" to={`/chunk/${encodeURIComponent(hit.chunkId)}`}>{hit.documentTitle}</Link>
+        <Link className="hit-title" to={`/chunk/${encodeURIComponent(hit.chunkId)}`}
+          onClick={(event) => openEvidenceLink(event, () => evidence.onOpenEvidence(passageRequest(hit)))}>{hit.documentTitle}</Link>
         <p>{hit.segments.map((segment, index) => segment.hit
           ? <mark key={index}>{segment.text}</mark> : segment.text)}</p>
       </li>)}</ul>
     </section>}
-  </>;
+  </EvidenceViewer>;
 }
