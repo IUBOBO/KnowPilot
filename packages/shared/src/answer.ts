@@ -262,6 +262,8 @@ export interface QuoteCheckSummary {
  * 而这几个字段要参与确定性校验（比如"说了没找到依据就不能给结论性断言"）。
  */
 export interface Answer {
+  /** Optional component projection of the same server-verified citations and text. */
+  blocks?: import('./answer-blocks.ts').AnswerBlocks;
   /** 正文，含 `[E1]` 引用标记。无效标记已被服务端剔除 */
   answer: string;
   citations: readonly Citation[];

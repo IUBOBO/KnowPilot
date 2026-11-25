@@ -1,9 +1,9 @@
-import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import {
   FEEDBACK_DOWN_REASONS, FEEDBACK_NOTE_MAX_CHARS, FEEDBACK_REASON_LABELS,
   type Answer, type AnswerFeedback, type AskEvidenceReview, type AskResponse, type Citation,
-  type FeedbackDownReason, type FeedbackRating, type SubmitFeedbackResponse,
+  type FeedbackDownReason, type FeedbackRating, type OpenEvidence, type SubmitFeedbackResponse,
 } from '@knowpilot/shared';
 import { ApiError, apiPost, isAbort, toApiError } from '../../api.ts';
 import { ErrorNotice } from '../../components/ErrorNotice.tsx';
@@ -11,6 +11,8 @@ import { formatCnyFromUsd } from '../../currency.ts';
 import { FinalAnswerBody } from './AnswerMarkdown.tsx';
 import { renderAnswerCitations } from './AnswerSources.tsx';
 import { formatElapsed } from './AskProcess.tsx';
+
+const AnswerBlocks = lazy(() => import('./AnswerBlocks.tsx'));
 
 interface AskAnswerProps {
   result: AskResponse;
@@ -22,10 +24,11 @@ interface AskAnswerProps {
   onToggleReader: () => void;
   onRetry: () => void;
   blocks: ReactNode;
+  onOpenEvidence?: OpenEvidence;
 }
 
 export function AskAnswer({
-  result, byId, consent, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks,
+  result, byId, consent, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks, onOpenEvidence,
 }: AskAnswerProps) {
   return (
     <article className="card ask-answer-article" aria-label="回答">
@@ -39,7 +42,11 @@ export function AskAnswer({
         </p>
       )}
       <FinalAnswerBody text={result.answer.answer} byId={byId} />
-      {blocks}
+      {blocks ?? (result.answer.blocks !== undefined && (
+        <Suspense fallback={null}>
+          <AnswerBlocks response={result} {...(onOpenEvidence === undefined ? {} : { onOpenEvidence })} />
+        </Suspense>
+      ))}
       {result.delivery.status === 'interrupted' && <p className="ask-answer-note">查询中断。可以继续查找。</p>}
       {result.delivery.status === 'partial' && result.answer.verification.counts.contradicted > 0 && (
         <p className="ask-answer-note">部分说法与资料不一致，请结合来源核对。</p>
