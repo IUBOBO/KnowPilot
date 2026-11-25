@@ -621,6 +621,10 @@ console.log('超时与续跑：真实 runAsk + 假模型（零出网）');
     String(second.answer?.delivery.evidenceCount),
   );
   const f2 = second.finalizations[0];
+  check('续跑过程仅记录本次恢复的证据，引用来自最终交付',
+    second.answer?.process?.steps.some((step) => step.phase === 'resume' && step.state === 'done') === true &&
+    second.answer.process.counts.pooled === 1 && second.answer.process.counts.modelVisible === 1 &&
+    second.answer.process.counts.citations === second.answer.answer.citations.length);
   check(
     '累计预算：本次生效的查询额度 = 2 − 1（已用）',
     f2?.budget.limits.maxQueryCalls === 1,

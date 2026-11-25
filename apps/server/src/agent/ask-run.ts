@@ -43,6 +43,10 @@ import {
   type RunUsage,
   type SearchHit,
   type AskStatusEvent,
+  type AskProcessEventV1,
+  type AskProcessPhase,
+  type AskProcessSource,
+  type TraceToolCall,
 } from '@knowpilot/shared';
 import {
   budgetBlockMessage,
@@ -94,10 +98,11 @@ import { buildSystemPrompt, NO_EVIDENCE_PHRASE, promptHashOf } from './prompt.ts
 import { insertAskRecord } from './records.ts';
 import { insertUsageEvent, type UsagePurpose } from '../usage/repo.ts';
 import { createStreamFn } from './stream.ts';
+import { AskProcessRecorder } from './ask-process.ts';
 import { shouldPrefetchDocuments } from './latency-policy.ts';
 import {
   createDatasetTool, createPatentsTool, createPeopleTool, createSubmissionsTool, createThesesTool,
-  DATASET_TOOL, PATENTS_TOOL, SUBMISSIONS_TOOL, THESES_TOOL,
+  DATASET_TOOL, PATENTS_TOOL, PEOPLE_TOOL, SUBMISSIONS_TOOL, THESES_TOOL,
 } from './live-tools.ts';
 import { createJournalTool, JOURNAL_TOOL } from './journal-tool.ts';
 import {
@@ -111,6 +116,7 @@ import {
   RETRIEVE_TOOL,
   SUBMIT_ANSWER_TOOL,
   type SubmittedAnswer,
+  type RetrieveDetails,
   type SubmitAnswerArgs,
 } from './tools.ts';
 
@@ -196,14 +202,7 @@ export interface AskFinalization {
    * 可选：这是 O7 新增的字段，旧的验证脚本构造 `AskFinalization` 字面量时
    * 不必补它（缺失按空数组处理）。生产路径上 `finalize()` 总是会填。
    */
-  toolTrace?: readonly {
-    name: string;
-    query: string | null;
-    hitCount: number | null;
-    ms: number;
-    isError: boolean;
-    atMs: number;
-  }[];
+  toolTrace?: readonly TraceToolCall[];
   /** Request-to-response timings, excluding subsequent tool execution. No answer text. */
   modelTimings?: readonly { turn: number; phase: 'generation' | 'quote_repair'; ms: number; firstResponseMs: number | null }[];
   /** O2 的引用片段校验计数。省略 = 回落路径没有摘录可核，不是"全部通过"。 */
@@ -421,6 +420,9 @@ interface ToolCallLog {
   query?: string;
   hitCount?: number;
   matchedCount?: number;
+  candidates?: number;
+  skipped?: TraceToolCall['skipped'];
+  retrieval?: TraceToolCall['retrieval'];
   ms: number;
   isError: boolean;
   /** 相对运行开始的毫秒偏移（调用结束时刻）。Trace 按它排序展示。 */
@@ -512,6 +514,7 @@ export async function runAsk(
   // 版本不符（文档被重建/替换）或块已删除的，直接丢弃并记缺口 ——
   // 不能拿旧版证据冒充新版。
   const resumedRendered: string[] = [];
+  const restoreStartedAt = Date.now();
   let resumeDropped = 0;
   if (resumeState !== undefined) {
     const rows = loadChunkEvidenceRows(
@@ -676,13 +679,45 @@ export async function runAsk(
   let modelRequest: { startedAt: number; firstResponseAt?: number; endedAt?: number; stepId: string; phase: 'generation' | 'quote_repair' } | undefined;
   const modelTimings: NonNullable<AskFinalization['modelTimings']>[number][] = [];
   const startedStatusIds = new Set<string>();
-  function statusStart(stepId: string, message: string, phase: AskStatusEvent['phase']): void {
+  const process = new AskProcessRecorder();
+  const toolContextEvidence = new Map<string, readonly string[]>();
+  let promptEvidence: readonly string[] = [];
+  function observePool(): void {
+    const documents = new Set(pool.all().flatMap((entry) => entry.kind === 'document' ? [entry.documentId] : []));
+    process.pool(pool.size, documents.size);
+  }
+  function statusStart(
+    stepId: string, message: string, phase: NonNullable<AskStatusEvent['phase']>,
+    processPhase: AskProcessPhase = phase, source?: AskProcessSource, atMs = Date.now() - startedAt,
+  ): void {
     if (startedStatusIds.has(stepId)) return;
     startedStatusIds.add(stepId);
-    hooks?.onEvent?.({ type: 'status', stepId, state: 'start', message, atMs: Date.now() - startedAt, ...(phase === undefined ? {} : { phase }) });
+    const observation = process.start(stepId, processPhase, atMs, source, supplementary.has(stepId));
+    hooks?.onEvent?.({ type: 'status', stepId: `process-${observation.step.order}`, state: 'start',
+      message, atMs, phase, process: observation });
   }
-  function statusEnd(stepId: string, message: string, ms: number): void {
-    hooks?.onEvent?.({ type: 'status', stepId, state: 'end', message, atMs: Date.now() - startedAt, durationMs: ms });
+  function startLookup(id: string, toolName: string, args: Record<string, unknown> | undefined, message: string): void {
+    const needsContext = toolName === RETRIEVE_TOOL || (toolName === READ_PAPER_TOOL && args?.scope === 'section');
+    if ((!needsContext || contextBudget.remaining > 0) && !deadline.signal.aborted) {
+      statusStart(id, message, 'retrieval', 'retrieval', QUERY_SOURCE[toolName]);
+    }
+  }
+  function statusEnd(
+    stepId: string, message: string, ms: number | undefined, state?: Parameters<AskProcessRecorder['end']>[2],
+    result?: Parameters<AskProcessRecorder['end']>[3],
+  ): AskProcessEventV1 | undefined {
+    const observation = process.end(stepId, ms, state, result);
+    if (observation === undefined) return;
+    hooks?.onEvent?.({ type: 'status', stepId: `process-${observation.step.order}`, state: 'end',
+      message, atMs: Date.now() - startedAt, ...(ms === undefined ? {} : { durationMs: ms }), process: observation,
+    });
+    return observation;
+  }
+  if (resumeState !== undefined) {
+    statusStart('process-restore', '正在恢复已有证据…', 'retrieval', 'resume', undefined, restoreStartedAt - startedAt);
+    observePool();
+    statusEnd('process-restore', '恢复已有证据', Date.now() - restoreStartedAt, 'done',
+      resumeDropped === 0 ? undefined : { degraded: true });
   }
 
   // 运行级截止信号：既传给 streamFn 取消卡住的 HTTP 请求，
@@ -736,6 +771,8 @@ export async function runAsk(
   const effectiveQuestion = followUpRewrite?.rewritten ?? question;
 
   // 路由与计划面对的是**改写后的独立问题**；首轮提问时它就是原问题。
+  const intentStartedAt = Date.now();
+  statusStart('process-intent', '正在识别问题类型…', 'understanding', 'intent');
   const route = routeTask(effectiveQuestion);
   const basePlan = buildInvestigationPlan(effectiveQuestion, route);
   const currentSourceKeys = new Set(pool.all().map(investigationSource));
@@ -748,6 +785,7 @@ export async function runAsk(
   });
   const subgoals = [...basePlan.subgoals, ...followUpGoals];
   const plan = { ...basePlan, subgoals };
+  statusEnd('process-intent', '识别问题类型', Date.now() - intentStartedAt);
 
   // O11：提示词在路由之后拼 —— 场景规则（期刊分区、台账现状）按这一次的问题
   // 注入，问"样品怎么保存"时不必为分区规则付 token。日期在一次 run 内固定，
@@ -834,7 +872,17 @@ export async function runAsk(
     streamFn: createStreamFn(deps.models, deadline.signal, {
       baseUrl: settings.baseUrl,
       apiKey: settings.apiKey,
-    }, () => {
+    }, (context) => {
+      const sentEvidence = context.messages.flatMap((message) =>
+        message.role === 'toolResult' && !message.isError ? toolContextEvidence.get(message.toolCallId) ?? [] : []);
+      const carriesInitialEvidence = context.messages.some((message) => {
+        if (message.role !== 'user') return false;
+        if (typeof message.content === 'string') return message.content === agentPrompt;
+        const [text] = message.content;
+        return message.content.length === 1 && text?.type === 'text' && text.text === agentPrompt;
+      });
+      if (carriesInitialEvidence) sentEvidence.push(...promptEvidence);
+      process.modelRequest(sentEvidence);
       toolCallsSeenThisTurn = 0;
       const phase = pendingSubmission === undefined ? 'generation' : 'quote_repair';
       modelRequest = { startedAt: Date.now(), stepId: `model-${assistantTurns + 1}`, phase };
@@ -938,7 +986,7 @@ export async function runAsk(
       const queryStatus = STATUS_MESSAGES[ctx.toolCall.name];
       if (queryStatus !== undefined && !deadline.signal.aborted) {
         lastStage = 'retrieval';
-        statusStart(ctx.toolCall.id, queryStatus, 'retrieval');
+        startLookup(ctx.toolCall.id, ctx.toolCall.name, requested, queryStatus);
       }
       return undefined;
     },
@@ -1046,7 +1094,10 @@ export async function runAsk(
       case 'message_end':
         if (event.message.role === 'assistant' && modelRequest !== undefined) {
           modelRequest.endedAt = Date.now();
-          statusEnd(modelRequest.stepId, modelRequest.phase === 'quote_repair' ? '补全引用摘录' : '组织回答', modelRequest.endedAt - modelRequest.startedAt);
+          const state = event.message.stopReason === 'aborted' ? 'interrupted'
+            : event.message.stopReason === 'error' ? 'failed' : 'done';
+          statusEnd(modelRequest.stepId, modelRequest.phase === 'quote_repair' ? '补全引用摘录' : '组织回答',
+            modelRequest.endedAt - modelRequest.startedAt, state);
         }
         return;
       case 'message_update':
@@ -1098,7 +1149,9 @@ export async function runAsk(
         }
         {
           const message = STATUS_MESSAGES[event.toolName];
-          if (message !== undefined && admittedQueryIds.has(event.toolCallId)) statusStart(event.toolCallId, message, 'retrieval');
+          if (message !== undefined && admittedQueryIds.has(event.toolCallId)) {
+            startLookup(event.toolCallId, event.toolName, event.args, message);
+          }
         }
         return;
       case 'tool_execution_end': {
@@ -1140,7 +1193,53 @@ export async function runAsk(
             stoppedReason: event.isError ? 'error' : added.length === 0 ? 'no_evidence' : 'completed',
           });
         }
-        if (STATUS_MESSAGES[event.toolName] !== undefined && admittedQueryIds.has(event.toolCallId)) statusEnd(event.toolCallId, STATUS_MESSAGES[event.toolName]!, log.ms);
+        const statusMessage = STATUS_MESSAGES[event.toolName];
+        if (statusMessage !== undefined && admittedQueryIds.has(event.toolCallId)) {
+          const observed = !event.isError && isQueryDetails(details) ? details : undefined;
+          const retrieval = !event.isError && isRetrieveDetails(details) ? details : undefined;
+          if (observed !== undefined) {
+            toolContextEvidence.set(event.toolCallId, observed.evidenceIds);
+            observePool();
+          }
+          const skipped = retrieval?.searched === false;
+          if (skipped) {
+            log.skipped = 'context_budget';
+            if (!startedStatusIds.has(event.toolCallId)) {
+              process.start(event.toolCallId, 'retrieval', log.atMs, QUERY_SOURCE[event.toolName], before !== undefined);
+            }
+          }
+          const state = skipped ? 'skipped' : deadline.signal.aborted ? 'interrupted' : event.isError ? 'failed' : 'done';
+          const rank = retrieval?.ranking;
+          if (retrieval?.searched === true) {
+            log.candidates = retrieval.hitCount;
+          } else if (observed !== undefined && retrieval === undefined && event.toolName !== READ_PAPER_TOOL) {
+            log.candidates = observed.evidenceIds.length;
+          }
+          const observation = statusEnd(
+            event.toolCallId, skipped ? '证据额度已用完，未检索' : statusMessage, skipped ? undefined : log.ms, state, {
+            ...(observed === undefined || skipped ? {} : { newEvidence: observed.newEvidenceIds.length }),
+            ...(log.candidates === undefined ? {} : { candidates: log.candidates }),
+            ...(retrieval?.searched !== true ? {} : { actualMode: retrieval.mode,
+              ...(retrieval.lookup === undefined ? {} : { lookup: retrieval.lookup }),
+            }),
+            ...(rank?.mode === 'rerank' || rank?.fallback === true ? {
+              ranking: rank.mode === 'rerank' ? 'reranked' : 'fallback',
+              rankedCandidates: rank.candidates,
+              ...(rank.ms === undefined ? {} : { rankingMs: rank.ms }),
+            } : {}),
+            ...(retrieval?.degraded === true ? { degraded: true } : {}),
+          });
+          if (retrieval?.searched === true && observation !== undefined) {
+            const { order, lookup, ranking, rankedCandidates, rankingMs } = observation.step;
+            log.retrieval = {
+              order, mode: retrieval.mode, newEvidence: retrieval.newEvidenceIds.length,
+              ...(lookup === undefined ? {} : { lookup }),
+              ...(ranking === undefined ? {} : { ranking }),
+              ...(rankedCandidates === undefined ? {} : { rankedCandidates }),
+              ...(rankingMs === undefined ? {} : { rankingMs }),
+            };
+          }
+        }
         // 工具完成是安全边界：把当前计划/证据引用落成检查点。
         saveCheckpoint(null);
         return;
@@ -1222,6 +1321,8 @@ export async function runAsk(
         // Retrieval is an optimization. The normal tool path remains available after a local failure.
       }
     }
+    // These are attached by the server to the initial user message, not parsed from model text.
+    promptEvidence = pool.all().map((entry) => entry.id);
     await agent.prompt(agentPrompt);
     await agent.waitForIdle();
   } catch (err) {
@@ -1564,7 +1665,9 @@ export async function runAsk(
       toolTrace: toolLog.map((t) => ({
         name: t.name,
         query: t.query ?? null,
-        hitCount: t.hitCount ?? null,
+        hitCount: t.candidates ?? null,
+        ...(t.skipped === undefined ? {} : { skipped: t.skipped }),
+        ...(t.retrieval === undefined ? {} : { retrieval: t.retrieval }),
         ms: t.ms,
         isError: t.isError,
         atMs: t.atMs,
@@ -1740,6 +1843,7 @@ export async function runAsk(
       question,
       answer,
       delivery,
+      process: process.snapshot(answer.citations.length),
       ...(followUpRewrite !== undefined ? { followUpRewrite } : {}),
     };
   }
@@ -1903,6 +2007,7 @@ export async function runAsk(
     answer,
     delivery,
     ...(followUpRewrite !== undefined ? { followUpRewrite } : {}),
+    process: process.snapshot(verified.citations.length),
     ...(nextActions.length > 0 ? { nextActions } : {}),
   };
 }
@@ -1954,6 +2059,13 @@ const STATUS_MESSAGES: Record<string, string> = {
   [JOURNAL_TOOL]: '正在查期刊分区…',
   [PATENTS_TOOL]: '正在查专利…',
   [THESES_TOOL]: '正在查大论文…',
+  [PEOPLE_TOOL]: '正在查人员档案…',
+};
+
+const QUERY_SOURCE: Readonly<Record<string, AskProcessSource>> = {
+  [RETRIEVE_TOOL]: 'documents', [READ_PAPER_TOOL]: 'paper', [SUBMISSIONS_TOOL]: 'submissions',
+  [DATASET_TOOL]: 'datasets', [JOURNAL_TOOL]: 'journals', [PATENTS_TOOL]: 'patents',
+  [THESES_TOOL]: 'theses', [PEOPLE_TOOL]: 'people',
 };
 
 /** 工具入参 → 日志里的查询词。四类工具的字段名不同，这里归一。 */
@@ -1965,10 +2077,9 @@ function logQueryOf(args: Record<string, unknown> | undefined): { query?: string
   return {};
 }
 
-function isRetrieveDetails(value: unknown): value is { hitCount: number; newEvidenceIds: string[] } {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as { hitCount?: unknown; newEvidenceIds?: unknown };
-  return typeof v.hitCount === 'number' && Array.isArray(v.newEvidenceIds);
+function isRetrieveDetails(value: unknown): value is RetrieveDetails {
+  return isQueryDetails(value) && 'hitCount' in value && typeof value.hitCount === 'number' &&
+    'mode' in value && (value.mode === 'keyword' || value.mode === 'semantic' || value.mode === 'hybrid');
 }
 
 function addUsage(total: RunUsage, usage: Usage): RunUsage {

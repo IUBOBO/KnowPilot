@@ -4,12 +4,15 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createAssistantMessageEventStream, getCurrentTools, type AssistantMessage, type Context, type JsonObject, type MutableModels } from '@earendil-works/pi-ai';
 import { segmentForIndex } from '@knowpilot/shared';
 import { openDb } from '../db/index.ts';
+import { insertRunTrace } from '../trace/repo.ts';
+import { EvidenceContextBudget } from './context-budget.ts';
+import { EvidencePool } from './evidence.ts';
 import { loadConfig } from '../config.ts';
 import { runAsk, type AskFinalization, type AskRunEvent } from './ask-run.ts';
 import { createLabModels } from './models.ts';
 import { routeTask } from './task-router.ts';
 import { shouldPrefetchDocuments } from './latency-policy.ts';
-import { READ_PAPER_TOOL, RETRIEVE_TOOL, REPAIR_QUOTES_TOOL, SUBMIT_ANSWER_TOOL } from './tools.ts';
+import { createRetrieveTool, READ_PAPER_TOOL, RETRIEVE_TOOL, REPAIR_QUOTES_TOOL, SUBMIT_ANSWER_TOOL } from './tools.ts';
 
 let passed = 0;
 function check(label: string, fn: () => void) { fn(); passed++; console.log(`✓ ${label}`); }
@@ -20,13 +23,19 @@ const args = (quotes: JsonObject[] = [{ evidence_id: 'E1', quote: source }]): Js
 type Spec = { tool: string; args: JsonObject; wait?: number; hang?: boolean };
 type Strategy = (turn: number, context: Context) => Spec;
 
-async function scenario(strategy: Strategy, budget = {}, signal?: AbortSignal, extraEvidence = false) {
+async function scenario(strategy: Strategy, budget = {}, signal?: AbortSignal, extraEvidence = false, longContext = false) {
   const { db } = openDb(':memory:');
   db.prepare('INSERT INTO documents(id,title,material,content_hash,created_at) VALUES(?,?,?,?,?)').run('doc', '样品处理规程', 'method', 'hash', '2026-01-01');
   db.prepare('INSERT INTO doc_chunks(id,doc_id,ordinal,text,text_seg,page,section_path,token_count) VALUES(?,?,?,?,?,?,?,?)').run('chunk', 'doc', 0, source, segmentForIndex(source), 1, '["离心条件"]', source.length);
   if (extraEvidence) {
     const second = source + '离心后的上清液应立即转移至新容器。';
     db.prepare('INSERT INTO doc_chunks(id,doc_id,ordinal,text,text_seg,page,section_path,token_count) VALUES(?,?,?,?,?,?,?,?)').run('chunk-2', 'doc', 1, second, segmentForIndex(second), 2, '["离心条件"]', second.length);
+  }
+  if (longContext) {
+    const longText = '测试长文本'.repeat(2000);
+    db.prepare('INSERT INTO doc_chunks(id,doc_id,ordinal,text,text_seg,page,section_path,token_count) VALUES(?,?,?,?,?,?,?,?)').run(
+      'long-chunk', 'doc', 1, longText, segmentForIndex(longText), 2, '[]', longText.length,
+    );
   }
   const config = { ...loadConfig(), deepseekApiKey: 'fake-latency-key', embedModelDir: '__latency_check_no_model__', rerankEnabled: false };
   const models = createLabModels();
@@ -62,7 +71,15 @@ async function scenario(strategy: Strategy, budget = {}, signal?: AbortSignal, e
       onEvent: (event) => events.push(event), onFinalize: (entry) => finalizations.push(entry), ...(signal === undefined ? {} : { signal }),
     });
     const usageRows = db.prepare('SELECT duration_ms FROM usage_events ORDER BY created_at,event_id').all() as { duration_ms: number }[];
-    return { response, events, f: finalizations[0]!, turns, usageRows, error: undefined };
+    const f = finalizations[0]!;
+    insertRunTrace(db, { finalization: f, userId: null, askedAt: new Date().toISOString(), recordedAt: new Date().toISOString() });
+    const disk = db.prepare('SELECT tool_trace_json, rewrite_events_json FROM ask_run_traces WHERE run_id = ?')
+      .get(f.runId) as { tool_trace_json: string; rewrite_events_json: string };
+    for (const call of f.toolTrace ?? []) {
+      if (call.query !== null && call.query !== '') assert(!disk.tool_trace_json.includes(call.query));
+    }
+    assert(!disk.rewrite_events_json.includes('离心条件'));
+    return { response, events, f, turns, usageRows, error: undefined };
   } catch (error) {
     return { response: undefined, events, f: finalizations[0]!, turns, usageRows: [], error };
   } finally { db.close(); }
@@ -86,6 +103,28 @@ let r = await scenario((turn, context) => {
 });
 check('先取证再一次生成完成，有可核对引用', () => { assert.ifError(r.error); assert.equal(r.turns, 1); assert.equal(r.response?.answer.citations.length, 1); assert.equal(r.response.delivery.status, 'verified'); assert.equal(r.f.budget.used.queryCalls, 1); });
 check('提前检索纳入 Trace、预算及证据', () => { assert.equal(r.f.toolTrace?.[0]?.name, RETRIEVE_TOOL); assert.equal(r.f.evidenceCount, 1); assert(r.f.contextChars > 0 && r.f.contextChars <= 8000); });
+check('安全时间线使用真实候选、证据池、模型请求与引用计数', () => {
+  const process = r.response?.process;
+  assert.deepEqual(process?.counts, { candidates: 1, documents: 1, pooled: 1, modelVisible: 1, citations: 1 });
+  assert.deepEqual(process.steps.map((s) => [s.phase, s.state]), [
+    ['intent', 'done'], ['retrieval', 'done'], ['generation', 'done'], ['verification', 'done'],
+  ]);
+  const lookup = process.steps.find((s) => s.phase === 'retrieval')!;
+  assert.equal(lookup.ranking, undefined);
+  assert.equal(lookup.supplementary, undefined);
+  assert.equal(lookup.candidates, r.f.toolTrace?.[0]?.hitCount);
+  assert.equal(lookup.durationMs, r.f.toolTrace?.[0]?.ms);
+  assert.equal(lookup.newEvidence, r.f.toolTrace?.[0]?.retrieval?.newEvidence);
+  assert.deepEqual(lookup.lookup, { requestedMode: 'hybrid', scope: 'library', limit: 8 });
+  assert.deepEqual(lookup.lookup, r.f.toolTrace?.[0]?.retrieval?.lookup);
+  assert.equal(lookup.order, r.f.toolTrace?.[0]?.retrieval?.order);
+  assert(!JSON.stringify(process).includes(source));
+  assert(!JSON.stringify(process).includes(question));
+  for (const step of process.steps) {
+    assert(r.events.some((event) => event.type === 'status' && event.process?.step.order === step.order &&
+      event.process?.step.durationMs === step.durationMs));
+  }
+});
 check('模型计时从请求起算，排除工具结束时刻覆盖', () => { assert.equal(r.usageRows.length, 1); assert(r.usageRows[0]!.duration_ms >= 28); assert((r.f.modelTimings?.[0]?.firstResponseMs ?? 0) >= 10); });
 check('检索、生成、核验都有明确结束耗时', () => { for (const phase of ['retrieval', 'generation', 'verification']) { const start = r.events.find((e) => e.type === 'status' && e.phase === phase); assert(start?.type === 'status'); assert(r.events.some((e) => e.type === 'status' && e.stepId === start.stepId && e.state === 'end' && e.durationMs !== undefined)); } });
 
@@ -123,6 +162,8 @@ check('复用提前查询，Agent 只执行一次定向补查', () => {
   assert.equal(r.f.evidenceCount, 1);
   assert.equal(r.f.toolTrace?.filter((t) => t.name === RETRIEVE_TOOL && !t.isError).length, 2);
   assert.equal(r.events.filter((e) => e.type === 'status' && e.phase === 'retrieval' && e.state === 'start').length, 2);
+  assert.equal(r.response?.process?.steps.filter((step) => step.supplementary).length, 1);
+  assert.equal(r.response?.process?.counts.modelVisible, 1);
 });
 
 r = await scenario((turn, context) => {
@@ -133,13 +174,59 @@ r = await scenario((turn, context) => {
 }, {}, undefined, true);
 check('Agent 可自行选择按章节精读或顺序查阅已解析全文', () => {
   assert.ifError(r.error);
-  assert.equal(r.f.toolTrace?.filter((t) => t.name === READ_PAPER_TOOL && !t.isError).length, 2);
+  const calls = r.f.toolTrace?.filter((t) => t.name === READ_PAPER_TOOL);
+  assert.equal(calls?.length, 2);
+  assert.equal(calls[0]?.hitCount, 2);
+  assert.equal(calls[1]?.hitCount, null);
+  const steps = r.response?.process?.steps.filter((step) => step.source === 'paper');
+  assert.equal(steps?.length, 2);
+  assert.equal(steps[0]?.candidates, calls[0]?.hitCount);
+  assert.equal(steps[1]?.candidates, undefined);
+  assert(steps.every((step) => step.newEvidence === 0)); // Both results reuse the prefetched evidence.
   assert.equal(r.response?.answer.citations[0]?.sourceType, 'document');
 });
 
 r = await scenario(() => ({ tool: SUBMIT_ANSWER_TOOL, args: args() }), { maxQueryCalls: 0 });
-check('零查询预算不会通过提前检索越权取证', () => { assert.equal(r.f.budget.used.queryCalls, 0); assert.equal(r.f.evidenceCount, 0); assert.equal(r.response?.answer.citations.length, 0); });
+check('零查询预算不会通过提前检索越权取证', () => { assert.equal(r.f.budget.used.queryCalls, 0); assert.equal(r.f.evidenceCount, 0); assert.equal(r.response?.answer.citations.length, 0);
+  assert.equal(r.response?.process?.counts.candidates, undefined);
+  assert.equal(r.response?.process?.counts.modelVisible, 0);
+  assert.equal(r.response?.process?.counts.citations, 0);
+});
 
 r = await scenario(() => ({ tool: SUBMIT_ANSWER_TOOL, args: args(), hang: true }), { maxWallMs: 60 });
-check('在模型等待阶段超时仍有唯一终态及已取得证据', () => { assert.ifError(r.error); assert.equal(r.f.stopReason, 'wall'); assert.equal(r.f.lastStage, 'generation'); assert.equal(r.response?.delivery.status, 'interrupted'); assert.equal(r.f.evidenceCount, 1); assert.equal(r.f.modelTimings?.[0]?.firstResponseMs, null); });
+check('在模型等待阶段超时仍有唯一终态及已取得证据', () => { assert.ifError(r.error); assert.equal(r.f.stopReason, 'wall'); assert.equal(r.f.lastStage, 'generation'); assert.equal(r.response?.delivery.status, 'interrupted'); assert.equal(r.f.evidenceCount, 1); assert.equal(r.f.modelTimings?.[0]?.firstResponseMs, null);
+  assert.equal(r.response?.process?.steps.find((s) => s.phase === 'generation')?.state, 'interrupted');
+});
+
+r = await scenario((turn) => {
+  if (turn < 8) return { tool: READ_PAPER_TOOL, args: { evidence_id: 'E1', scope: 'full', from: 1 } };
+  if (turn === 8) return { tool: RETRIEVE_TOOL, args: { query: '用完证据额度后尝试查询' } };
+  return { tool: SUBMIT_ANSWER_TOOL, args: args() };
+}, {}, undefined, false, true);
+check('预算跳过在 Trace 和 SSE 中明确可见，缺少候选与检索耗时', () => {
+  assert.ifError(r.error);
+  const call = r.f.toolTrace?.filter((entry) => entry.name === RETRIEVE_TOOL).at(-1);
+  assert.equal(call?.hitCount, null);
+  assert.equal(call.skipped, 'context_budget');
+  assert.equal(call.retrieval, undefined);
+  const step = r.response?.process?.steps.find((entry) => entry.state === 'skipped');
+  assert.equal(step?.source, 'documents');
+  assert.equal(step.durationMs, undefined);
+  assert.equal(step.candidates, undefined);
+  assert(!r.events.some((event) => event.type === 'status' && event.process?.step.order === step.order && event.state === 'start'));
+  assert(r.events.some((event) => event.type === 'status' && event.process?.step.order === step.order && event.process?.step.state === 'skipped'));
+});
+{
+  const { db } = openDb(':memory:');
+  try {
+    const result = await createRetrieveTool({ db, config: loadConfig(), pool: new EvidencePool(),
+      contextBudget: new EvidenceContextBudget(0) }).execute('fixture-skipped', { query: '本轮不会执行' });
+    check('上下文预算耗尽的工具占位缺少执行标志和请求元数据', () => {
+      assert.equal(result.details?.searched, false);
+      assert.equal(result.details?.lookup, undefined);
+    });
+  } finally {
+    db.close();
+  }
+}
 console.log(`\n问答延迟回归 ${passed}/${passed} 通过（假模型，零云端调用）。`);

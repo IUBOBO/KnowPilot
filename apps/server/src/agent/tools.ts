@@ -206,6 +206,12 @@ export interface RetrieveDetails extends QueryDetails {
   mode: SearchMode;
   /** 库里有几条命中（未去重前） */
   hitCount: number;
+  /** Set only when the tool reached the search service and got results. */
+  searched: boolean;
+  lookup?: import('@knowpilot/shared').AskProcessLookup;
+  /** Safe telemetry from the actual retrieval response, for the process and Trace views. */
+  ranking?: { mode: 'rerank' | 'rrf'; candidates: number; fallback: boolean; ms?: number };
+  degraded?: true;
   /** 本次真正渲染给模型的字符数（C1/X2a 上下文预算） */
   renderedChars?: number;
   /** 因上下文预算/预算耗尽未展示的候选条数 */
@@ -276,6 +282,7 @@ export function createRetrieveTool(deps: RetrieveToolDeps): AgentTool<typeof Ret
             query: params.query,
             mode,
             hitCount: 0,
+            searched: false,
             newEvidenceIds: [],
             evidenceIds: [],
             notice: '证据展示预算已用完（V3 C1），未执行新的检索渲染。',
@@ -439,6 +446,16 @@ export function createRetrieveTool(deps: RetrieveToolDeps): AgentTool<typeof Ret
           renderedChars: usedChars + contextChars,
           droppedCount: dropped,
           truncatedCount,
+          searched: true,
+          lookup: { requestedMode: mode, scope: documentId === undefined ? 'library' : 'document', limit,
+            ...(material === undefined ? {} : { material }),
+          },
+          ...(result.ranking === undefined ? {} : { ranking: {
+            mode: result.ranking.mode, candidates: result.ranking.candidates,
+            fallback: result.ranking.fallbackReason !== undefined,
+            ...(result.ranking.ms === undefined ? {} : { ms: result.ranking.ms }),
+          } }),
+          ...(result.mode !== mode || result.ranking?.fallbackReason !== undefined ? { degraded: true } : {}),
           ...(contextChunkIds.length > 0 ? { contextChunkIds } : {}),
           ...(sectionEvidenceChunkIds.length > 0 ? { sectionEvidenceChunkIds } : {}),
           ...(result.notice !== undefined ? { notice: result.notice } : {}),

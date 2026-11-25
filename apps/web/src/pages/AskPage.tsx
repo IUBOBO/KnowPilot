@@ -5,6 +5,7 @@ import {
   type AskHistoryTurn,
   type AskResponse,
   type AskStreamEvent,
+  type AskProcessV1,
   type Citation,
   type DocumentSummary,
   type ListDocumentsResponse,
@@ -19,7 +20,7 @@ import { AnswerBody } from './ask/AnswerMarkdown.tsx';
 import { AnswerSources } from './ask/AnswerSources.tsx';
 import { AnswerNotes, AskAnswer } from './ask/AskAnswer.tsx';
 import { AskComposer, AskHistory } from './ask/AskConversation.tsx';
-import { activityLabel, LiveElapsedTime, QueryDetails, type AskProcessProps, type TimelineStep } from './ask/AskProcess.tsx';
+import { activityLabel, appendProcess, LiveElapsedTime, QueryDetails, type AskProcessProps, type TimelineStep } from './ask/AskProcess.tsx';
 import { AskWorkspace } from './ask/AskWorkspace.tsx';
 import './ask/ask.css';
 
@@ -73,6 +74,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
   const [evidenceTotal, setEvidenceTotal] = useState(0);
   /** 本次运行已经发生的步骤（O9 步骤时间线）。随流式事件追加，不清空重排。 */
   const [steps, setSteps] = useState<TimelineStep[]>([]);
+  const [process, setProcess] = useState<AskProcessV1>();
   /** 本次提问的起始时刻（performance.now），用于把事件换算成相对偏移 */
   const runStartedAtRef = useRef(0);
   /**
@@ -124,6 +126,11 @@ export function AskPage({ active, scope, onActivity, slots }: {
     switch (event.type) {
       case 'status':
         if (event.state !== 'end') setProgress(activityLabel(event));
+        if (event.process?.version === 1 && event.process.step !== undefined && event.process.counts !== undefined) {
+          const observation = event.process;
+          setProcess((previous) => appendProcess(previous, observation));
+          return;
+        }
         setSteps((prev) => {
           if (event.state === 'end' && event.stepId !== undefined) {
             return prev.map((step) => step.stepId === event.stepId
@@ -219,6 +226,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
       setProgress(null);
       setEvidenceTotal(0);
       setSteps([]);
+      setProcess(undefined);
       setDrawerOpen(false);
       runStartedAtRef.current = performance.now();
       runEndedRef.current = false;
@@ -282,6 +290,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
       setProgress(null);
       setEvidenceTotal(0);
       setSteps([]);
+      setProcess(undefined);
       setDrawerOpen(false);
       runStartedAtRef.current = performance.now();
       runEndedRef.current = false;
@@ -355,6 +364,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
     setResult(turn.response);
     setCurrentQuestion(turn.question);
     setSteps([]);
+    setProcess(undefined);
     setError(null);
     setStopped(false);
     setDrawerOpen(false);
@@ -376,8 +386,10 @@ export function AskPage({ active, scope, onActivity, slots }: {
     result?.delivery.resumeAvailable === true ? result.delivery.taskId : undefined;
 
   const processProps: AskProcessProps = result === null
-    ? { steps, runningSince: active ? runStartedAtRef.current : undefined }
-    : { steps, elapsedMs: result.answer.durationMs, warnings: result.answer.warnings };
+    ? { steps, process, runningSince: active && loading ? runStartedAtRef.current : undefined,
+        endState: stopped ? 'cancelled' : error === null ? undefined : 'failed' }
+    : { steps, process: result.process, elapsedMs: result.answer.durationMs, warnings: result.answer.warnings,
+        showUnavailable: true };
 
   return (
     <AskWorkspace reader={{
@@ -435,7 +447,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
             <span className="ask-live-dot" aria-hidden="true" />
             <span role="status">{progress ?? '正在开始查询'}</span>
           </div>
-          {evidenceTotal > 0 && <p className="ask-live-meta">已找到 {evidenceTotal} 条资料线索</p>}
+          {process === undefined && evidenceTotal > 0 && <p className="ask-live-meta">已找到 {evidenceTotal} 条资料线索</p>}
           {slots?.renderProcess === undefined ? <QueryDetails {...processProps} /> : slots.renderProcess(processProps)}
           {draftText.trim() !== '' && (
             <section className="ask-live-draft" aria-label="回答草稿">
@@ -449,6 +461,8 @@ export function AskPage({ active, scope, onActivity, slots }: {
       {stopped && <p className="ask-answer-note" role="status">已停止本次查询。</p>}
 
       {error !== null && <ErrorNotice error={error} onRetry={retryLastRequest} />}
+      {result === null && (stopped || error !== null) &&
+        (slots?.renderProcess === undefined ? <QueryDetails {...processProps} /> : slots.renderProcess(processProps))}
 
       {result !== null && (
         <>

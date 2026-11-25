@@ -63,7 +63,7 @@ export function createStreamFn(
   models: Models,
   runSignal?: AbortSignal,
   transport?: ModelTransport,
-  onRequestStart?: () => void,
+  onRequestStart?: (context: Parameters<StreamFn>[1]) => void,
 ): StreamFn {
   return (model, context, options?: SimpleStreamOptions) => {
     const signal = mergeSignals(runSignal, options?.signal);
@@ -81,7 +81,7 @@ export function createStreamFn(
         ? { ...withSignal, apiKey: transport.apiKey }
         : withSignal;
 
-    onRequestStart?.();
+    onRequestStart?.(context);
     return models.streamSimple(requestModel, context, requestOptions);
   };
 }

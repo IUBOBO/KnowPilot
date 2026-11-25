@@ -10,7 +10,7 @@
  *
  * 【这一份钉死的是什么】
  *   · 三个问答入口的 Trace 都在（本脚本走同步入口）；
- *   · Trace 表里**没有回答正文、没有证据原文、也没有问题原文**（问题靠 JOIN）；
+ *   · Trace 表和管理接口均不包含回答正文、证据原文或问题原文；
  *   · 列表能按运行 ID / 用户 / 结果筛选，结果计数不随筛选变化；
  *   · 详情带预算、工具轨迹与 usage_events 关联，且正文哨兵不出现；
  *   · 普通成员与导师都进不来（403），匿名 401，只有 admin 200。
@@ -37,6 +37,7 @@ import type {
   ApiErrorBody,
   AskResponse,
   ListAdminTracesResponse,
+  ListAskRecordsResponse,
 } from '@knowpilot/shared';
 import { createApp } from '../app.ts';
 import { createLabModels } from '../agent/models.ts';
@@ -51,7 +52,7 @@ const ROOT = mkdtempSync(join(tmpdir(), 'knowpilot-trace-verify-'));
 const FIXED_NOW = new Date('2026-10-18T05:00:00.000Z');
 /** 回答正文里的哨兵：它绝不能出现在 Trace 的任何响应里。 */
 const ANSWER_SENTINEL = 'TRACE-SECRET-ANSWER-7f3a';
-/** 问题原文里的哨兵：它应当只从 ask_records 的 JOIN 出现。 */
+/** 问题原文里的哨兵：提问者仍可从问答历史读取，Trace 响应中应当隐藏。 */
 const QUESTION_SENTINEL = 'TRACE-QUESTION-91c2';
 
 let passed = 0;
@@ -278,7 +279,7 @@ async function main(): Promise<void> {
     check('全量计数 all=2 / ok=2', all.counts.all === 2 && all.counts.byOutcome.some((c) => c.outcome === 'ok' && c.count === 2), JSON.stringify(all.counts));
 
     const joined = all.items.find((i) => i.runId === memberRun.runId);
-    check('问题原文来自 ask_records 的 JOIN', joined?.question?.includes(QUESTION_SENTINEL) === true, String(joined?.question));
+    check('管理列表只显示问题脱敏占位', joined?.question === '已脱敏' && !JSON.stringify(all).includes(QUESTION_SENTINEL));
     check('提问人显示名来自 users', joined?.asker === '成员甲', String(joined?.asker));
     check('列表项不含回答正文', all.items.every((i) => !('answer' in i) && !('answerText' in i)));
 
@@ -317,7 +318,7 @@ async function main(): Promise<void> {
     check('管理员取详情 → 200', res.status === 200, String(res.status));
     const detail = await bodyOf<AdminTraceDetail>(res);
 
-    check('问题原文可见（来自 JOIN）', detail.question?.includes(QUESTION_SENTINEL) === true, String(detail.question));
+    check('管理详情只显示问题脱敏占位', detail.question === '已脱敏' && !JSON.stringify(detail).includes(QUESTION_SENTINEL));
     check('预算四维齐全', typeof detail.budget.used.queryCalls === 'number' && typeof detail.budget.limits.maxWallMs === 'number');
     check('工具轨迹非空', detail.toolCalls.length > 0, JSON.stringify(detail.toolCalls));
     check('有模型、提示词哈希与路由', detail.model !== '' && detail.promptHash.length > 0 && ['simple', 'multi_source', 'state_lookup'].includes(detail.route), JSON.stringify({ model: detail.model, hash: detail.promptHash, route: detail.route }));
@@ -326,6 +327,47 @@ async function main(): Promise<void> {
     check('详情 JSON 不含回答正文哨兵', !JSON.stringify(detail).includes(ANSWER_SENTINEL));
     check('详情 JSON 不含证据原文（本次没有文档证据）', Array.isArray(detail.retrievalHits));
 
+    const syntheticSecrets = ['fixture-passphrase-G2', 'https://fixture.invalid/file?credentials=private-fixture', 'C:/fixture/research/private-file'] as const;
+    db.prepare(`UPDATE ask_run_traces SET tool_trace_json = ?, rewrite_events_json = ?, follow_up_rewrite_json = ?,
+      warnings_json = ?, errors_json = ? WHERE run_id = ?`).run(
+      JSON.stringify([{ name: 'retrieve', query: syntheticSecrets[0], hitCount: 2, ms: 15, atMs: 16, isError: false,
+        retrieval: { mode: 'keyword', newEvidence: 1, ranking: 'fallback', rankedCandidates: 2 } }]),
+      JSON.stringify([{ round: 1, gapReason: 'missing_subgoal', missingSubgoalIds: ['G1', 'F1', syntheticSecrets[2]],
+        queries: [{ text: syntheticSecrets[1], subgoalId: 'G1' }, { text: syntheticSecrets[0], subgoalId: 'F1' }],
+        unexpectedProperty: syntheticSecrets[2], evidenceIdsAdded: [],
+        coverageBefore: 'partial', coverageAfter: 'partial', stoppedReason: 'completed' }]),
+      JSON.stringify({ original: syntheticSecrets[2], rewritten: syntheticSecrets[0], changed: true, ms: 20 }),
+      JSON.stringify([syntheticSecrets[2]]), JSON.stringify([syntheticSecrets[1]]), memberRun.runId,
+    );
+    const privateQuestion = [QUESTION_SENTINEL, 'Cookie: session=fixture-session-token', '一段未标记的合成私有科研正文',
+      '密码：fixture-chinese', 'DEEPSEEK_API_KEY=fixture-env-key', 'https://fixture.invalid/file?signature=private-fixture'].join(' ');
+    db.prepare('UPDATE ask_records SET question = ? WHERE run_id = ?').run(privateQuestion, memberRun.runId);
+
+    const redacted = await bodyOf<AdminTraceDetail>(
+      await api(`/api/v1/admin/traces/${encodeURIComponent(memberRun.runId)}`, {}, adminCookie),
+    );
+    const redactedList = await bodyOf<ListAdminTracesResponse>(
+      await api(`/api/v1/admin/traces?runId=${encodeURIComponent(memberRun.runId)}`, {}, adminCookie),
+    );
+    const rawTrace = JSON.stringify([redacted, redactedList]);
+    check('管理 Trace 脱敏工具参数、改写文本、错误和警告', syntheticSecrets.every((secret) => !rawTrace.includes(secret)));
+    check('管理列表和详情均遮蔽会话 Cookie、私有正文及凭据',
+      redacted.question === '已脱敏' && redactedList.items[0]?.question === '已脱敏' &&
+      [QUESTION_SENTINEL, 'fixture-session-token', '合成私有科研正文', 'fixture-chinese', 'fixture-env-key', 'private-fixture']
+        .every((secret) => !rawTrace.includes(secret)));
+    check('脱敏保留计时、候选、检索模式、重排回退和合法子任务编号',
+      redacted.toolCalls[0]?.ms === 15 && redacted.toolCalls[0]?.hitCount === 2 &&
+      redacted.toolCalls[0]?.retrieval?.mode === 'keyword' && redacted.toolCalls[0]?.retrieval?.ranking === 'fallback' &&
+      redacted.rewriteEvents[0]?.missingSubgoalIds.join(',') === 'G1,F1' &&
+      redacted.rewriteEvents[0]?.queries.map((query) => query.subgoalId).join(',') === 'G1,F1');
+    const ownerHistory = await bodyOf<ListAskRecordsResponse>(await api('/api/v1/ask-records', {}, memberCookie));
+    check('提问者自己的问答历史仍保留问题原文',
+      ownerHistory.items.find((item) => item.runId === memberRun.runId)?.question === privateQuestion);
+    db.prepare('DELETE FROM ask_records WHERE run_id = ?').run(adminRun.runId);
+    const orphan = await bodyOf<AdminTraceDetail>(
+      await api(`/api/v1/admin/traces/${encodeURIComponent(adminRun.runId)}`, {}, adminCookie),
+    );
+    check('原始记录缺失时保留可空问题字段', orphan.question === null);
     const absent = await api('/api/v1/admin/traces/run-does-not-exist', {}, adminCookie);
     check('不存在的运行 → 404', absent.status === 404, String(absent.status));
   }

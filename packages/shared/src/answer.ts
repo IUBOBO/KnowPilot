@@ -17,6 +17,8 @@
  */
 import type { Material, MatchSource, SearchMode } from './documents.ts';
 import type { ApiErrorBody } from './errors.ts';
+import type { AskProcessEventV1, AskProcessV1 } from './ask-process.ts';
+export type { AskProcessCounts, AskProcessEventV1, AskProcessLookup, AskProcessPhase, AskProcessSource, AskProcessStep, AskProcessV1 } from './ask-process.ts';
 
 /**
  * 引用分两类：**文档**（检索命中的原文块）与**记录**（实时查出来的台账 / 数据集 / 分区行）。
@@ -399,6 +401,8 @@ export interface AskNextAction {
 }
 
 export interface AskResponse {
+  /** Optional attempt-local process data. Older stored answers omit it. */
+  process?: AskProcessV1;
   /** 本次运行的 id，与日志里的 run_id 一致，便于用户报障时定位 */
   runId: string;
   question: string;
@@ -447,6 +451,8 @@ export interface AskResponse {
  *   输出之后**才算出来的 —— 正文流完了，校验还没跑。
  */
 export interface AskStatusEvent {
+  /** Additive observation carried on the existing status event. */
+  process?: AskProcessEventV1;
   type: 'status';
   message: string;
   /** New servers send explicit step boundaries; older clients can ignore these fields. */
