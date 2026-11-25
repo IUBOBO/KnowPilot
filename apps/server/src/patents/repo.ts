@@ -176,17 +176,14 @@ export function listPatentPage(
 }
 
 export function getPatent(db: Db, id: string): Patent | null {
-  const row = db.prepare(`SELECT ${COLUMNS} ${FROM} WHERE p.id = ? AND p.deleted_at IS NULL`).get(id) as unknown as
-    | PatentRow
-    | undefined;
-  return row === undefined ? null : toPatent(db, row);
+  return getPatentFor(db, id, { canReadAll: true, userId: null });
 }
 
 export function getPatentFor(db: Db, id: string, scope: PatentScope): Patent | null {
-  const patent = getPatent(db, id);
-  if (patent === null) return null;
-  if (!scope.canReadAll && patent.ownerUserId !== scope.userId) return null;
-  return patent;
+  const row = db.prepare(`SELECT ${COLUMNS} ${FROM}
+    WHERE p.id = ? AND p.deleted_at IS NULL AND (? = 1 OR p.owner_user_id IS ?)`)
+    .get(id, Number(scope.canReadAll), scope.userId) as unknown as PatentRow | undefined;
+  return row === undefined ? null : toPatent(db, row);
 }
 
 export interface PatentFields {

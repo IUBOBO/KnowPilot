@@ -32,6 +32,9 @@ import {
   permissionsOf,
   ROLES,
   SEARCH_DEFAULT_LIMIT,
+  SEARCH_MAX_LIMIT,
+  RETRIEVAL_RECORD_TYPES,
+  type RecordRetrievalScope,
   SEARCH_MODES,
   SUBMISSION_STATUSES,
   SUBMISSION_STATUS_LABELS,
@@ -325,7 +328,7 @@ import {
   searchDocumentTitles,
   type DocumentFileRow,
 } from './documents/repo.ts';
-import { searchDocuments } from './documents/search.ts';
+import { retrieveDocumentPage, retrieveDocumentsV1, retrieveRecordsV1 } from './retrieval/service.ts';
 import { uploadDocument } from './documents/upload.ts';
 import {
   countJournals,
@@ -1176,15 +1179,54 @@ export function createApp(deps: AppDeps): Hono<Env> {
 
   // ── 检索（阶段 1：关键词 / 语义 / 混合）─────────────────────
   app.get('/api/v1/search', async (c) => {
-    const limit = parseLimit(c.req.query('limit'), SEARCH_DEFAULT_LIMIT, 50);
+    const query = c.req.query('q') ?? '';
+    const version = c.req.query('contractVersion');
+    if (version === undefined) {
+      const limit = parseLimit(c.req.query('limit'), SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT);
+      const material = parseMaterial(c.req.query('material'));
+      const { search } = await retrieveDocumentPage(deps.db, deps.config, {
+        version: 1, query, strategy: parseMode(c.req.query('mode')), limit, offset: 0, candidateLimit: limit,
+        scope: { kind: 'document', ...(material === undefined ? {} : { material }) },
+      });
+      return c.json(search satisfies SearchResponse);
+    }
+
+    if (version !== '1') throw new AppError('invalid_argument', '不支持的检索协议版本。');
+    if (query.length > 1000) throw new AppError('invalid_argument', '检索词最多 1000 字。');
+    const limit = parseRetrievalNumber(c.req.query('limit'), SEARCH_DEFAULT_LIMIT, 1, SEARCH_MAX_LIMIT);
+    const offset = parseRetrievalNumber(c.req.query('offset'), 0, 0, 10_000);
     const material = parseMaterial(c.req.query('material'));
-    const body = await searchDocuments(deps.db, deps.config, {
-      query: c.req.query('q') ?? '',
-      mode: parseMode(c.req.query('mode')),
-      limit,
-      ...(material !== undefined ? { material } : {}),
-    });
-    return c.json(body satisfies SearchResponse);
+    const documentId = parseRetrievalId(c.req.query('documentId'));
+    const recordId = parseRetrievalId(c.req.query('recordId'));
+    const recordType = c.req.query('recordType');
+    const recordFilters = {
+      groupId: c.req.query('groupId'), personId: c.req.query('personId'), year: c.req.query('year'),
+      status: c.req.query('status'), milestone: c.req.query('milestone'),
+    };
+    if (recordType !== undefined) {
+      const type = RETRIEVAL_RECORD_TYPES.find((item) => item === recordType);
+      const mode = c.req.query('mode');
+      if (type === undefined || material !== undefined || documentId !== undefined ||
+          c.req.query('candidateLimit') !== undefined || (mode !== undefined && mode !== 'structured')) {
+        throw new AppError('invalid_argument', '台账类型、策略或范围不匹配。');
+      }
+      const user = c.get('user');
+      if (user === null) throw new AppError('unauthenticated', '请先登录。');
+      return c.json(retrieveRecordsV1(deps.db, {
+        version: 1, query, strategy: 'structured', limit, offset,
+        scope: parseRecordRetrievalScope(type, recordId, recordFilters),
+      }, user));
+    }
+
+    if (recordId !== undefined || Object.values(recordFilters).some((value) => value !== undefined)) {
+      throw new AppError('invalid_argument', '台账过滤必须提供台账类型。');
+    }
+    const candidateLimit = parseRetrievalNumber(c.req.query('candidateLimit'), SEARCH_MAX_LIMIT, 1, SEARCH_MAX_LIMIT);
+    return c.json(await retrieveDocumentsV1(deps.db, deps.config, {
+      version: 1, query, strategy: parseMode(c.req.query('mode')), limit, offset, candidateLimit,
+      scope: { kind: 'document', ...(material === undefined ? {} : { material }),
+        ...(documentId === undefined ? {} : { documentId }) },
+    }));
   });
 
   // ── 块原文（阶段 2）────────────────────────────────────────
@@ -5101,6 +5143,60 @@ function parsePatrolRuleUpdates(body: Record<string, unknown>): PatrolRuleUpdate
     out.push(update);
   }
   return out;
+}
+
+function parseRecordRetrievalScope(
+  type: RecordRetrievalScope['recordType'],
+  recordId: string | undefined,
+  raw: Record<'groupId' | 'personId' | 'year' | 'status' | 'milestone', string | undefined>,
+): RecordRetrievalScope {
+  const groupId = parseRetrievalId(raw.groupId);
+  const common = {
+    kind: 'record' as const, ...(recordId === undefined ? {} : { recordId }),
+    ...(groupId === undefined ? {} : { groupId }),
+  };
+  const personId = parseRetrievalId(raw.personId);
+  const person = personId === undefined ? {} : { personId };
+  const year = raw.year === undefined ? {} : { year: parseRetrievalNumber(raw.year, 1900, 1900, 2999) };
+  if (type === 'M-SUBMIT' && raw.milestone === undefined) {
+    const status = SUBMISSION_STATUSES.find((item) => item === raw.status);
+    if (raw.status === undefined || status !== undefined) {
+      return { ...common, ...person, ...year, recordType: type, ...(status === undefined ? {} : { status }) };
+    }
+  }
+  if (type === 'M-PATENT' && raw.status === undefined) {
+    const milestone = PATENT_FILTERS.find((item) => item === raw.milestone);
+    if (raw.milestone === undefined || milestone !== undefined) {
+      return { ...common, ...person, ...year, recordType: type, ...(milestone === undefined ? {} : { milestone }) };
+    }
+  }
+  if (type === 'M-THESIS' && raw.status === undefined && raw.milestone === undefined && raw.year === undefined) {
+    return { ...common, ...person, recordType: type };
+  }
+  if (type === 'M-PERSON' && raw.personId === undefined && raw.milestone === undefined && raw.year === undefined) {
+    const status = PERSON_STATUSES.find((item) => item === raw.status);
+    if (raw.status === undefined || status !== undefined) {
+      return { ...common, recordType: type, ...(status === undefined ? {} : { status }) };
+    }
+  }
+  throw new AppError('invalid_argument', '台账筛选值不适用于所选类型。');
+}
+
+function parseRetrievalNumber(raw: string | undefined, fallback: number, min: number, max: number): number {
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!/^\d+$/u.test(raw) || !Number.isSafeInteger(value) || value < min || value > max) {
+    throw new AppError('invalid_argument', '检索分页参数不在允许范围内。');
+  }
+  return value;
+}
+
+function parseRetrievalId(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  if (raw.length === 0 || raw.length > 200 || raw.trim() !== raw || /[\x00-\x1f]/u.test(raw)) {
+    throw new AppError('invalid_argument', '检索范围 ID 格式无效。');
+  }
+  return raw;
 }
 
 function parseLimit(raw: string | undefined, fallback: number, max: number): number {

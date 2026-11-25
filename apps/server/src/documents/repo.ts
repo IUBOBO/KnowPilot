@@ -181,26 +181,6 @@ export function findById(db: Db, id: string, model: string): DocRow | undefined 
     .get(model, id) as unknown as DocRow | undefined;
 }
 
-/**
- * 按块 id 批量取整块原文。
- *
- * 检索接口返回的 `segments` 是"命中词前后各 120 字"的摘要窗口，
- * 给人扫一眼足够了，但作为**证据**交出去是不合格的：模型只看到半句话时，
- * 极易把"本办法适用于硕士生"读成"本办法适用于所有人"。
- * 所以问答链路必须拿完整块，不能复用检索结果的摘要。
- *
- * 找不到的 id 直接从 Map 里缺失，由调用方决定跳过还是报错 ——
- * 块可能在算完检索之后被另一个进程重跑了索引，那不是错误。
- */
-export function loadChunkTexts(db: Db, ids: readonly string[]): Map<string, string> {
-  if (ids.length === 0) return new Map();
-  const placeholders = ids.map(() => '?').join(', ');
-  const rows = db
-    .prepare(`SELECT id, text FROM doc_chunks WHERE id IN (${placeholders})`)
-    .all(...ids) as unknown as { id: string; text: string }[];
-  return new Map(rows.map((r) => [r.id, r.text]));
-}
-
 /** 恢复检查点时要用的块+文档元数据（不包含任何回答正文）。 */
 export interface ChunkEvidenceRow {
   chunkId: string;
@@ -252,23 +232,6 @@ export function loadChunkEvidenceRows(db: Db, ids: readonly string[]): Map<strin
     });
   }
   return out;
-}
-
-/**
- * 文档 id → 索引版本（`documents.index_version`）。
- *
- * 证据上带版本，是为了在长证据被截断时仍能说清"这是哪一版"：同一份文档
- * 重建索引后切法会变，旧证据与新证据不能混为一谈。按文档 id 批量取，
- * 而不是按 chunk id 逐个查 —— 一次检索通常只有几份文档。
- */
-export function loadDocumentVersions(db: Db, ids: readonly string[]): Map<string, number> {
-  if (ids.length === 0) return new Map();
-  const unique = [...new Set(ids)];
-  const placeholders = unique.map(() => '?').join(', ');
-  const rows = db
-    .prepare(`SELECT id, index_version FROM documents WHERE id IN (${placeholders})`)
-    .all(...unique) as unknown as { id: string; index_version: number }[];
-  return new Map(rows.map((r) => [r.id, r.index_version]));
 }
 
 /**

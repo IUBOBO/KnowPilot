@@ -21,30 +21,18 @@ import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import {
   ASSET_CHECK_LABELS,
   DATASET_PROFILE_LABELS,
-  PATENT_FILTER_LABELS,
   PERSON_STATUSES,
-  PERSON_STATUS_LABELS,
   SUBMISSION_STATUSES,
-  SUBMISSION_STATUS_LABELS,
-  isUnverifiedSource,
   type CitationField,
   type CodeAsset,
   type AuthUser,
-  type Patent,
-  type Person,
-  type Submission,
-  type Thesis,
-  hasPermission,
 } from '@knowpilot/shared';
 import type { RowScope } from '../auth/scope.ts';
 import { checkAsset, probeRoots, type AssetProbe } from '../code/check.ts';
 import { countMatchingCodeAssets, searchCodeAssets } from '../code/repo.ts';
 import type { Db } from '../db/index.ts';
-import { getPatentFor, listPatentPage, type PatentScope } from '../patents/repo.ts';
-import { getPerson, listPeople } from '../people/repo.ts';
 import { getDocumentFile } from '../documents/repo.ts';
-import { countMatchingSubmissions, getSubmissionFor, searchSubmissions } from '../submissions/repo.ts';
-import { getThesis, listTheses, type ThesisViewer } from '../theses/repo.ts';
+import { queryLedger } from '../retrieval/records.ts';
 import {
   renderEvidenceForModel,
   type EvidencePool,
@@ -143,63 +131,6 @@ function recordPage(pool: EvidencePool, records: readonly RecordEvidenceInput[],
   };
 }
 
-function patentEvidence(patent: Patent, queryTime: string): RecordEvidenceInput {
-  const fields: CitationField[] = [{ label: '专利名称', value: patent.name }];
-  if (patent.createdByName) fields.push({ label: '登记人', value: patent.createdByName });
-  const applicant = patent.applicantName ?? patent.applicantPersonName;
-  if (applicant) fields.push({ label: '申请人', value: applicant });
-  if (patent.patentNo) fields.push({ label: '专利号', value: patent.patentNo });
-  if (patent.firstSubmittedOn) fields.push({ label: '申请日期', value: patent.firstSubmittedOn });
-  if (patent.substantiveExamOn) fields.push({ label: '实审日期', value: patent.substantiveExamOn });
-  if (patent.publishedOn) fields.push({ label: '公布日期', value: patent.publishedOn });
-  if (patent.grantedOn) fields.push({ label: '授权日期', value: patent.grantedOn });
-  fields.push({ label: '台账状态', value: patent.grantedOn ? PATENT_FILTER_LABELS.granted
-    : patent.publishedOn ? PATENT_FILTER_LABELS.published
-      : patent.substantiveExamOn ? PATENT_FILTER_LABELS.under_review : patent.firstSubmittedOn ? '已提交申请' : '日期待核实' });
-  if (patent.notes) fields.push({ label: '备注', value: patent.notes });
-  return { recordType: 'M-PATENT', recordId: patent.id, recordTitle: patent.name, queryTime, recordUpdatedAt: patent.updatedAt, fields };
-}
-
-function thesisEvidence(thesis: Thesis, queryTime: string): RecordEvidenceInput {
-  const author = thesis.personName ?? thesis.authorName;
-  const title = thesis.title ?? `${author}的大论文`;
-  const fields: CitationField[] = [{ label: '大论文题目', value: thesis.title ?? '题目未填' }];
-  if (author) fields.push({ label: '作者', value: author });
-  if (thesis.direction) fields.push({ label: '研究方向', value: thesis.direction });
-  if (thesis.gradeVisible && thesis.grade) fields.push({ label: '成绩', value: thesis.grade });
-  if (thesis.notes) fields.push({ label: '备注', value: thesis.notes });
-  return { recordType: 'M-THESIS', recordId: thesis.id, recordTitle: title, queryTime, recordUpdatedAt: thesis.updatedAt, fields };
-}
-
-function patentView(user: AuthUser): PatentScope {
-  return { userId: user.id, canReadAll: hasPermission(user.role, 'patent.read.all') };
-}
-
-function thesisView(user: AuthUser): ThesisViewer {
-  return { userId: user.id, canReadGrade: hasPermission(user.role, 'thesis.read.grade') };
-}
-
-function personEvidence(person: Person, queryTime: string): RecordEvidenceInput {
-  const fields = [{ label: '姓名', value: person.name }, { label: '人员状态', value: PERSON_STATUS_LABELS[person.status] }];
-  if (person.groupId) fields.push({ label: '课题组', value: person.groupId });
-  return { recordType: 'M-PERSON', recordId: person.id, recordTitle: person.name, queryTime, recordUpdatedAt: person.updatedAt, fields };
-}
-
-export function restoreLedgerEvidence(db: Db, user: AuthUser, type: 'M-PATENT' | 'M-THESIS' | 'M-PERSON', id: string, queryTime: string): RecordEvidenceInput | null {
-  if (type === 'M-PERSON') {
-    if (!hasPermission(user.role, 'people.read')) return null;
-    const person = getPerson(db, id, { userId: user.id, canReadSensitive: false, canManage: false });
-    return person ? personEvidence(person, queryTime) : null;
-  }
-  if (type === 'M-PATENT') {
-    const patent = getPatentFor(db, id, patentView(user));
-    return patent === null ? null : patentEvidence(patent, queryTime);
-  }
-  if (!hasPermission(user.role, 'thesis.read')) return null;
-  const thesis = getThesis(db, id, thesisView(user));
-  return thesis === null ? null : thesisEvidence(thesis, queryTime);
-}
-
 export function createPeopleTool(db: Db, pool: EvidencePool, user: AuthUser): AgentTool<typeof PeopleParams, QueryDetails> {
   return {
     name: PEOPLE_TOOL,
@@ -207,17 +138,14 @@ export function createPeopleTool(db: Db, pool: EvidencePool, user: AuthUser): Ag
     description: '按姓名、课题组和登记状态查学生名单。用于确认人员身份、区分同名，或提供人员 ID 以核对关联成果。',
     parameters: PeopleParams,
     execute: async (_id, params) => {
-      if (!hasPermission(user.role, 'people.read')) return recordPage(pool, [], 0, 0);
-      const time = new Date().toISOString();
-      if (params.record_id !== undefined) {
-        const hit = restoreLedgerEvidence(db, user, 'M-PERSON', params.record_id, time);
-        return recordPage(pool, hit === null ? [] : [hit], hit === null ? 0 : 1, 0);
-      }
-      const offset = params.offset ?? 0;
-      const page = listPeople(db, { keyword: params.keyword, offset, limit: params.limit ?? DEFAULT_LIMIT,
-        ...(params.group_id ? { groupId: params.group_id } : {}), ...(params.status ? { status: params.status } : {}),
-      }, { userId: user.id, canReadSensitive: false, canManage: false });
-      return recordPage(pool, page.items.map((person) => personEvidence(person, time)), page.matched, offset);
+      const offset = params.record_id === undefined ? (params.offset ?? 0) : 0;
+      const page = queryLedger(db, {
+        type: 'M-PERSON', keyword: params.keyword, limit: params.limit ?? DEFAULT_LIMIT, offset,
+        ...(params.record_id === undefined ? {} : { recordId: params.record_id }),
+        ...linkedPerson(params),
+        ...(params.status ? { status: params.status } : {}),
+      }, { user }, new Date().toISOString());
+      return recordPage(pool, page.records, page.matched, offset);
     },
   };
 }
@@ -229,18 +157,16 @@ export function createPatentsTool(db: Db, pool: EvidencePool, user: AuthUser): A
     description: '查已经登记的专利。用户问谁有专利信息、某人登记了哪些专利时，用登记人判断管理归属。不要把申请人当成登记人，也不能据此断言法律权属。',
     parameters: PatentParams,
     execute: async (_id, params) => {
-      const offset = params.offset ?? 0;
-      const time = new Date().toISOString();
-      if (params.record_id !== undefined) {
-        const record = restoreLedgerEvidence(db, user, 'M-PATENT', params.record_id, time);
-        return recordPage(pool, record === null ? [] : [record], record === null ? 0 : 1, 0);
-      }
-      const page = listPatentPage(db, {
-        keyword: params.keyword?.trim(), limit: params.limit ?? DEFAULT_LIMIT,
-        offset, filter: params.milestone ?? 'all', ...(params.registrant ? { registrant: params.registrant } : {}),
-        ...(params.year === undefined ? {} : { year: params.year }), ...linkedPerson(params),
-      }, patentView(user));
-      return recordPage(pool, page.items.map((patent) => patentEvidence(patent, time)), page.matched, offset);
+      const offset = params.record_id === undefined ? (params.offset ?? 0) : 0;
+      const page = queryLedger(db, {
+        type: 'M-PATENT', keyword: params.keyword, limit: params.limit ?? DEFAULT_LIMIT, offset,
+        ...(params.record_id === undefined ? {} : { recordId: params.record_id }),
+        ...linkedPerson(params),
+        filter: params.milestone ?? 'all',
+        ...(params.registrant ? { registrant: params.registrant } : {}),
+        ...(params.year === undefined ? {} : { year: params.year }),
+      }, { user }, new Date().toISOString());
+      return recordPage(pool, page.records, page.matched, offset);
     },
   };
 }
@@ -252,16 +178,13 @@ export function createThesesTool(db: Db, pool: EvidencePool, user: AuthUser): Ag
     description: '查大论文的作者、题目和研究方向。可以根据某个作者的方向继续寻找做过类似主题的人。相似是依据已登记的方向或题目做的比较。',
     parameters: ThesisParams,
     execute: async (_id, params) => {
-      const time = new Date().toISOString();
-      if (!hasPermission(user.role, 'thesis.read')) return recordPage(pool, [], 0, 0);
-      if (params.record_id !== undefined) {
-        const record = restoreLedgerEvidence(db, user, 'M-THESIS', params.record_id, time);
-        return recordPage(pool, record === null ? [] : [record], record === null ? 0 : 1, 0);
-      }
-      const offset = params.offset ?? 0;
-      const page = listTheses(db, { keyword: params.keyword?.trim(), limit: params.limit ?? DEFAULT_LIMIT, offset,
-        ...linkedPerson(params) }, thesisView(user));
-      return recordPage(pool, page.items.map((thesis) => thesisEvidence(thesis, time)), page.matched, offset);
+      const offset = params.record_id === undefined ? (params.offset ?? 0) : 0;
+      const page = queryLedger(db, {
+        type: 'M-THESIS', keyword: params.keyword, limit: params.limit ?? DEFAULT_LIMIT, offset,
+        ...(params.record_id === undefined ? {} : { recordId: params.record_id }),
+        ...linkedPerson(params),
+      }, { user }, new Date().toISOString());
+      return recordPage(pool, page.records, page.matched, offset);
     },
   };
 }
@@ -279,46 +202,6 @@ export type SubmissionsArgs = Static<typeof SubmissionsParams>;
 export type DatasetArgs = Static<typeof DatasetParams>;
 
 /** 台账里的一条记录 → 引用卡片上逐行显示的结论字段。 */
-export function submissionFields(s: Submission): CitationField[] {
-  const fields: CitationField[] = [{ label: '状态', value: SUBMISSION_STATUS_LABELS[s.status] }];
-
-  if (s.journal !== null) fields.push({ label: '期刊', value: s.journal.name });
-
-  // 分区连同**年份与维度**一起给，不能只给档位：分区一年一更，"1区"单独出现
-  // 无法判断是哪一年的（04 号 §4 的分区表硬约束）；而同一本刊的大类分区与
-  // 小类分区可以不同，不说维度也会变成另一件事。
-  // 「未经核对」看**来源**、不看 verified —— 官方分区表导进来的那条 verified
-  // 也是 0，按 verified 判断会给权威数据打上"未经核对"，那是句假话。
-  if (s.ranking !== null) {
-    const cat = s.ranking.category === '' ? '' : `（${s.ranking.category}）`;
-    const top = s.ranking.top ? ' Top' : '';
-    const unverified = isUnverifiedSource(s.ranking.source) ? '（未经核对）' : '';
-    fields.push({
-      label: '分区',
-      value: `${s.ranking.system} ${s.ranking.year} 年${cat} ${s.ranking.rank}${top}${unverified}`,
-    });
-  }
-
-  if (s.algorithmAbbr !== null && s.algorithmAbbr !== '') {
-    fields.push({ label: '稿件简称', value: s.algorithmAbbr });
-  }
-  if (s.submitterName !== null && s.submitterName !== '') {
-    fields.push({ label: '投稿人', value: s.submitterName });
-  }
-  fields.push({ label: '投稿日期', value: s.submittedOn ?? s.submittedAt ?? '未投出（准备中）' });
-  fields.push({ label: '投稿轮次', value: `第 ${s.currentRoundNo} 次` });
-  if (s.submissionNumber !== null && s.submissionNumber !== '') {
-    fields.push({ label: '投稿号', value: s.submissionNumber });
-  }
-  if (s.statusSince !== null) {
-    fields.push({ label: '进入当前状态日期', value: s.statusSince });
-  }
-  fields.push({ label: '最近更新', value: s.updatedAt });
-  if (s.notes !== null && s.notes !== '') fields.push({ label: '备注', value: s.notes });
-
-  return fields;
-}
-
 /** 数据集的一条登记记录 + 此刻的核对结论 → 结论字段。 */
 export function assetFields(asset: CodeAsset, probe: AssetProbe): CitationField[] {
   const fields: CitationField[] = [];
@@ -399,13 +282,12 @@ export function createSubmissionsTool(
       const now = deps.now ?? ((): Date => new Date());
       const queryTime = now().toISOString();
       const offset = params.record_id === undefined ? (params.offset ?? 0) : 0;
-      const search = { keyword: params.keyword?.trim(), status: params.status, scope: deps.scope,
-        ...(params.year === undefined ? {} : { year: params.year }), ...linkedPerson(params) };
-      const selected = params.record_id === undefined ? null : getSubmissionFor(deps.db, params.record_id, deps.scope);
-      const items = params.record_id === undefined
-        ? searchSubmissions(deps.db, { ...search, limit: params.limit ?? DEFAULT_LIMIT, offset })
-        : selected === null ? [] : [selected];
-      const matched = params.record_id === undefined ? countMatchingSubmissions(deps.db, search) : items.length;
+      const { records, matched } = queryLedger(deps.db, {
+        type: 'M-SUBMIT', keyword: params.keyword, status: params.status, limit: params.limit ?? DEFAULT_LIMIT, offset,
+        ...(params.record_id === undefined ? {} : { recordId: params.record_id }),
+        ...(params.year === undefined ? {} : { year: params.year }),
+        ...linkedPerson(params),
+      }, { submission: deps.scope }, queryTime);
 
       if (matched === 0) {
         return {
@@ -422,14 +304,7 @@ export function createSubmissionsTool(
         };
       }
 
-      return recordPage(deps.pool, items.map((s): RecordEvidenceInput => ({
-          recordType: 'M-SUBMIT',
-          recordId: s.id,
-          recordTitle: s.title,
-          queryTime,
-          recordUpdatedAt: s.updatedAt,
-          fields: submissionFields(s),
-      })), matched, offset);
+      return recordPage(deps.pool, records, matched, offset);
     },
   };
 }
