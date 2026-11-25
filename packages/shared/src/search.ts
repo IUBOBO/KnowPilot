@@ -1,8 +1,12 @@
 /**
  * 全文检索的契约。前后端共用。
  */
+import type { CitationField, RecordType } from './answer.ts';
 import type { Material, MatchSource, SearchMode } from './documents.ts';
 import type { TextSegment } from './text.ts';
+import type { PatentFilter } from './patents.ts';
+import type { PersonStatus } from './people.ts';
+import type { SubmissionStatus } from './submissions.ts';
 
 /** 一条检索命中。 */
 export interface SearchHit {
@@ -89,4 +93,98 @@ export const SNIPPET_RADIUS = 120;
  */
 export function formatSectionPath(path: readonly string[]): string {
   return path.join(' > ');
+}
+
+/** 限定资料范围或指定一种台账；文档排序和结构化排序分别报告。 */
+export const RETRIEVAL_RECORD_TYPES = ['M-SUBMIT', 'M-PATENT', 'M-THESIS', 'M-PERSON'] as const;
+export type RetrievalRecordType = (typeof RETRIEVAL_RECORD_TYPES)[number];
+
+export interface DocumentRetrievalScope {
+  kind: 'document';
+  material?: Material;
+  documentId?: string;
+}
+
+export type RecordRetrievalScope = {
+  kind: 'record';
+  recordId?: string;
+  groupId?: string;
+} & (
+  | { recordType: 'M-SUBMIT'; personId?: string; year?: number; status?: SubmissionStatus }
+  | { recordType: 'M-PATENT'; personId?: string; year?: number; milestone?: PatentFilter }
+  | { recordType: 'M-THESIS'; personId?: string }
+  | { recordType: 'M-PERSON'; status?: PersonStatus }
+);
+
+interface RetrievalPage {
+  limit: number;
+  offset: number;
+}
+
+export interface DocumentRetrievalRequest extends RetrievalPage {
+  version: 1;
+  query: string;
+  scope: DocumentRetrievalScope;
+  strategy: SearchMode;
+  candidateLimit: number;
+}
+
+export interface RecordRetrievalRequest extends RetrievalPage {
+  version: 1;
+  query: string;
+  scope: RecordRetrievalScope;
+  strategy: 'structured';
+}
+
+export type RetrievalRequestV1 = DocumentRetrievalRequest | RecordRetrievalRequest;
+
+export type RetrievalDiagnostic =
+  | 'low_relevance' | 'index_stale' | 'index_unavailable'
+  | 'vector_missing' | 'vector_partial' | 'vector_model_unavailable' | 'vector_query_failed'
+  | 'rerank_fallback';
+
+export interface DocumentEvidenceLocator {
+  kind: 'document';
+  documentId: string;
+  chunkId: string;
+  /** 与文档引用一致，使用实际块来源的索引版本。 */
+  sourceVersion: string;
+}
+
+export interface RecordEvidenceLocator {
+  kind: 'record';
+  recordType: RecordType;
+  recordId: string;
+  sourceVersion: string;
+}
+
+export type EvidenceLocator = DocumentEvidenceLocator | RecordEvidenceLocator;
+
+export interface DocumentRetrievalHit extends SearchHit, DocumentEvidenceLocator {
+  excerpt: string;
+  matchedBy: readonly MatchSource[];
+}
+
+export interface RecordRetrievalHit extends RecordEvidenceLocator {
+  recordTitle: string;
+  recordUpdatedAt: string | null;
+  queryTime: string;
+  excerpt: string;
+  fields: readonly CitationField[];
+  matchedBy: readonly ['structured'];
+}
+
+export interface RetrievalResponseV1 {
+  version: 1;
+  query: string;
+  scope: DocumentRetrievalScope | RecordRetrievalScope;
+  requestedStrategy: SearchMode | 'structured';
+  strategy: SearchMode | 'structured';
+  state: 'ok' | 'empty';
+  diagnostics: readonly RetrievalDiagnostic[];
+  offset: number;
+  nextOffset: number | null;
+  hits: readonly (DocumentRetrievalHit | RecordRetrievalHit)[];
+  ranking?: RankingInfo;
+  notice?: string;
 }

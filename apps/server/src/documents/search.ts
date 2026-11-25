@@ -22,6 +22,7 @@ import {
   type Material,
   type MatchSource,
   type RankingInfo,
+  type RetrievalDiagnostic,
   type SearchHit,
   type SearchMode,
   type SearchResponse,
@@ -32,7 +33,7 @@ import { isModelReady } from './embed.ts';
 import { scorePassagesQueued } from './rerank.ts';
 import { parseSectionPath } from './repo.ts';
 import { rankingText } from './ranking-text.ts';
-import { countEmbeddings, rankChunks } from './vector.ts';
+import { countEmbeddings, countEmbeddingsOfDoc, rankChunks } from './vector.ts';
 import { createRetrievalPolicy, isTitleOnly } from './retrieval-policy.ts';
 
 /**
@@ -278,23 +279,39 @@ function compatibleContext(a: NeighborRow, b: NeighborRow): boolean {
  */
 export interface SearchDeps {
   scorePassages?: typeof scorePassagesQueued;
+  rankChunks?: typeof rankChunks;
 }
 
+/** 保持旧调用的响应形状。 */
 export async function searchDocuments(
   db: Db,
   cfg: AppConfig,
   input: SearchInput,
   deps: SearchDeps = {},
 ): Promise<SearchResponse> {
+  return (await searchDocumentCandidates(db, cfg, input, deps)).result;
+}
+
+interface SearchExecution {
+  result: SearchResponse;
+  diagnostics: readonly RetrievalDiagnostic[];
+}
+
+export async function searchDocumentCandidates(
+  db: Db,
+  cfg: AppConfig,
+  input: SearchInput,
+  deps: SearchDeps = {},
+): Promise<SearchExecution> {
   const query = input.query.trim();
   const limit = Math.min(Math.max(1, Math.trunc(input.limit)), SEARCH_MAX_LIMIT);
 
+  const diagnostics: RetrievalDiagnostic[] = [];
   if (query === '') {
-    return { query: '', mode: input.mode, returned: 0, hits: [] };
+    return { result: respond(query, input.mode, [], []), diagnostics };
   }
 
   const model = embeddingModelKey(cfg);
-  const modelReady = isModelReady(cfg);
   const policy = createRetrievalPolicy(db, query, input.material, input.documentId);
   const keywordCandidates = (): SearchHit[] => {
     const main = keywordHits(db, query, RRF_DEPTH, input.material, policy.scope);
@@ -315,38 +332,48 @@ export async function searchDocuments(
 
   // 模型文件不在，语义这条路根本走不通。退化成关键词检索，
   // 但必须把"退化了"这件事说出来 —— 否则用户以为自己在用语义检索。
-  if (!modelReady && input.mode !== 'keyword') {
-    const fallback = orderKeyword();
-    return {
-      query,
-      mode: 'keyword',
-      returned: fallback.length,
-      hits: fallback,
-      notice:
-        '语义检索不可用：本地模型尚未下载，已自动改用关键词检索。' +
-        '运行 npm run fetch-model -w @knowpilot/server 下载模型后即可启用。',
-    };
-  }
-
   if (input.mode === 'keyword') {
-    const hits = orderKeyword();
-    return respond(query, 'keyword', hits, []);
+    return { result: respond(query, 'keyword', orderKeyword(), []), diagnostics };
   }
 
-  // 材料范围必须在**取 TopN 之前**交给语义检索：先全库取 TopN、再按材料过滤，
-  // 一旦另一个材料下恰好有 TopN 条更相近的干扰块，目标块连候选都进不了，
-  // 过滤后就是 0 命中（R1 复现的就是这一条，见 docs/architecture-audit/11）。
+  const fallback = (reason: 'vector_model_unavailable' | 'vector_query_failed', notice: string): SearchExecution => {
+    return { result: respond(query, 'keyword', orderKeyword(), [notice]), diagnostics: [reason] };
+  };
+  if (!isModelReady(cfg)) {
+    return fallback('vector_model_unavailable',
+      '语义检索不可用：本地模型尚未下载，已自动改用关键词检索。' +
+      '运行 npm run fetch-model -w @knowpilot/server 下载模型后即可启用。');
+  }
+
   const scope = policy.scope;
-  const totalChunks = countAllChunks(db, input.material);
-  // 覆盖率也必须按同一范围数：全局已建向量数配材料内总块数，会把"这个材料缺向量"
-  // 算成"全都建好了"（反过来也会报一个不存在的缺口）。
-  const embedded = countEmbeddings(db, model, input.material);
+  const scopedDocument = input.documentId;
+  const totalChunks = scopedDocument === undefined ? countAllChunks(db, input.material)
+    : (db.prepare(`SELECT COUNT(*) AS n FROM doc_chunks c JOIN documents d ON d.id = c.doc_id
+                   WHERE c.doc_id = ? AND (? IS NULL OR d.material = ?)`)
+      .get(scopedDocument, input.material ?? null, input.material ?? null) as { n: number }).n;
+  const embedded = scopedDocument === undefined ? countEmbeddings(db, model, input.material)
+    : totalChunks === 0 ? 0 : countEmbeddingsOfDoc(db, model, scopedDocument);
+  if (embedded === 0 && totalChunks > 0) diagnostics.push('vector_missing');
+  if (embedded > 0 && embedded < totalChunks) diagnostics.push('vector_partial');
+
+  let rawRanked: Awaited<ReturnType<typeof rankChunks>> = [];
+  if (embedded > 0 && scope.size > 0) {
+    try {
+      const rank = deps.rankChunks ?? rankChunks;
+      rawRanked = await rank(db, cfg, query, RRF_DEPTH, scope);
+    } catch {
+      return fallback('vector_query_failed', '语义检索不可用：查询向量化或排序失败，已自动改用关键词检索。');
+    }
+  }
+  const coverageLabel = scopedDocument === undefined ? input.material : 'document';
+  const topScore = rawRanked[0]?.score;
+  const semanticWeakness = weakSemanticNotice(topScore ?? 0);
+  const lowRelevance = topScore !== undefined && topScore < SEMANTIC_LOW_SCORE;
 
   if (input.mode === 'semantic') {
     if (embedded === 0) {
-      return respond(query, 'semantic', [], [missingVectorsNotice(totalChunks, input.material)]);
+      return { result: respond(query, 'semantic', [], [missingVectorsNotice(totalChunks, coverageLabel)]), diagnostics };
     }
-    const rawRanked = await rankChunks(db, cfg, query, Math.max(RRF_DEPTH,limit), scope);
     const ranked = rawRanked
       .map((hit) => ({ ...hit, score: hit.score >= 0 ? hit.score * policy.weight(hit.chunkId) : hit.score - (1-policy.weight(hit.chunkId)) }))
       .sort((a,b) => b.score - a.score).slice(0,limit);
@@ -356,18 +383,15 @@ export async function searchDocuments(
       input.material,
       new Map(ranked.map((r) => [r.chunkId, r.score])),
     );
-    const top = rawRanked[0]?.score ?? 0;
-    return respond(query, 'semantic', hits, [
-      ...coverageNotices(embedded, totalChunks, input.material),
-      weakSemanticNotice(top),
-    ]);
+    if (hits.length > 0 && lowRelevance) diagnostics.push('low_relevance');
+    return { result: respond(query, 'semantic', hits, [
+      ...coverageNotices(embedded, totalChunks, coverageLabel), semanticWeakness,
+    ]), diagnostics };
   }
 
   // ── 混合：两路各取 RRF_DEPTH 条，按名次融合 ──────────────────
   const keywordList = keywordCandidates();
-  const ranked =
-    embedded === 0 ? [] : await rankChunks(db, cfg, query, RRF_DEPTH, scope);
-  const semanticIds = hydratedIds(db, ranked.map((r) => r.chunkId), input.material);
+  const semanticIds = hydratedIds(db, rawRanked.map((r) => r.chunkId), input.material);
 
   const fused = fuse(keywordList.map((h) => h.chunkId), semanticIds);
   for (const [id,entry] of fused) entry.score *= policy.weight(id);
@@ -380,14 +404,15 @@ export async function searchDocuments(
   // 关键词一条没中、语义的最高分又偏低 —— 这是"库里很可能没有这个内容"的
   // 强信号。混合模式下这种查询最容易被误读成"搜到了"，所以专门提示。
   const notices = [
-    ...coverageNotices(embedded, totalChunks, input.material),
-    ...(keywordList.length === 0 ? [weakSemanticNotice(ranked[0]?.score ?? 0)] : []),
+    ...coverageNotices(embedded, totalChunks, coverageLabel),
+    ...(keywordList.length === 0 ? [semanticWeakness] : []),
   ];
 
   // ── Cross-Encoder 重排（R2，默认关闭）──────────────────────────
   // 只动"已经召回的这一批"的顺序：候选池来自融合排序的前 N 名。
   // 重排不能把没召回的内容变出来，所以候选深度是收益上限的一部分，
   // 评测时必须一起报告，不能只报重排后的指标。
+  if (keywordList.length === 0 && semanticIds.length > 0 && lowRelevance) diagnostics.push('low_relevance');
   if (cfg.rerankEnabled) {
     const depth = Math.max(cfg.rerankCandidateDepth, limit);
     const candidateIds = ordered.slice(0, depth).map(([id]) => id);
@@ -430,6 +455,7 @@ export async function searchDocuments(
           fallbackReason: reason,
         };
         // 开了重排却没重排，结果看起来与没开时一模一样 —— 必须说出来。
+        diagnostics.push('rerank_fallback');
         notices.push(`重排不可用，已按融合排序返回：${reason.slice(0, 200)}`);
       }
     }
@@ -439,7 +465,7 @@ export async function searchDocuments(
     const sources = fused.get(hit.chunkId)?.sources ?? [];
     return { ...hit, matchedBy: [...sources] as MatchSource[] };
   });
-  return respond(query, 'hybrid', hits, notices, ranking);
+  return { result: respond(query, 'hybrid', hits, notices, ranking), diagnostics };
 }
 
 /** 组装响应：说明文字统一在这里拼接，空字符串会被丢掉。 */
@@ -680,10 +706,10 @@ function countAllChunks(db: Db, material?: Material): number {
   return row.n;
 }
 
-function missingVectorsNotice(totalChunks: number, material?: Material): string {
+function missingVectorsNotice(totalChunks: number, material?: Material | 'document'): string {
   // 带材料过滤时，"库里"与"这个材料下"是两件事：库里可能有很多内容，
   // 只是这个材料下没有 —— 说成"库里还没有"会让用户去传一份不需要传的文档。
-  const where = material === undefined ? '库里' : '当前材料下';
+  const where = material === undefined ? '库里' : material === 'document' ? '当前文档中' : '当前材料下';
   if (totalChunks === 0) return `${where}还没有可检索的内容${material === undefined ? '，先上传文档。' : '。'}`;
   return (
     `${where} ${totalChunks} 个检索块都还没有向量，语义检索无法工作。` +
@@ -697,9 +723,9 @@ function missingVectorsNotice(totalChunks: number, material?: Material): string 
  * 为什么必须提示：语义只能覆盖"已建向量"的那部分块，用户会看到
  * "明明库里有这份文档，语义却搜不到"。不说明的话，这属于静默降质。
  */
-function coverageNotices(embedded: number, totalChunks: number, material?: Material): string[] {
+function coverageNotices(embedded: number, totalChunks: number, material?: Material | 'document'): string[] {
   if (totalChunks === 0 || embedded >= totalChunks) return [];
-  const scope = material === undefined ? '' : '当前材料下 ';
+  const scope = material === undefined ? '' : material === 'document' ? '当前文档中 ' : '当前材料下 ';
   return [
     `注意：${scope}${totalChunks} 个检索块中只有 ${embedded} 个建了向量，` +
       `语义检索只覆盖这一部分。运行 npm run embed -w @knowpilot/server 可补齐。`,
