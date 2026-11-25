@@ -236,6 +236,8 @@ export interface ChunkView {
 
 /** GET /api/v1/chunks/:chunkId 的响应体 */
 export interface ChunkContextResponse {
+  /** Version of the source returned for this chunk, including historical chunks. */
+  sourceVersion?: string;
   /** 仅旧引用回看时出现；历史片段不参与当前检索。 */
   archivedIndexVersion?: number;
   document: {
@@ -247,13 +249,12 @@ export interface ChunkContextResponse {
   /** 被引用的那一块 */
   chunk: ChunkView;
   /**
-   * 同文档**同页**的块，按 ordinal 升序，含被引块自己。
+   * 当前文档**同页**的块，按 ordinal 升序，含被引块自己。
    *
    * 为什么要带上邻居：只显示被引的那一块时，用户看到的是一个孤立片段，
    * 无法确认"它的上下文是不是这个意思"——而核对上下文恰恰是点进原文的全部目的。
    *
-   * 无页码的材料（Word / 纯文本）没有"同页"这个概念，此时只含被引块自己，
-   * 界面要靠 `chunk.page === null` 判断并说明这一点。
+   * 无页码或历史片段只返回被引块。历史索引版本无法确认同页邻块来自同一次修订。
    */
   siblings: readonly ChunkView[];
 }
