@@ -59,6 +59,7 @@ import { type AppConfig } from '../config.ts';
 import { requireModelSettings } from './model-config.ts';
 import type { Db } from '../db/index.ts';
 import { extractEvidenceGapLine, findQuoteIssues, verifyAnswer } from './citations.ts';
+import { composeAnswerBlocks } from './answer-blocks.ts';
 import { EvidenceContextBudget } from './context-budget.ts';
 import { evaluateCoverage, subgoalEvidenceRelevant, type CoverageState } from './coverage.ts';
 import {
@@ -1784,6 +1785,7 @@ export async function runAsk(
     requireQuotes ? { quotes: submitted?.quotes ?? [], requireQuotes: true } : {},
   );
   warnings.push(...verified.warnings);
+  const blocks = composeAnswerBlocks(submitted?.blocks, verified.citations);
   const verification = emptyClaimVerification('not_checked');
 
   if (verified.citations.length === 0 && gaps.length === 0) {
@@ -1809,6 +1811,7 @@ export async function runAsk(
   const answer: Answer = {
     answer: verified.answer,
     citations: verified.citations,
+    ...(blocks === undefined ? {} : { blocks }),
     evidenceGaps: gaps,
     limits,
     confidenceNotes,

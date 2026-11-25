@@ -19,6 +19,7 @@ import {
   type SearchHit,
   type SearchMode,
 } from '@knowpilot/shared';
+import { MAX_ANSWER_BLOCKS, ModelAnswerBlockSchema } from '@knowpilot/shared/answer-blocks';
 import type { AppConfig } from '../config.ts';
 import type { Db } from '../db/index.ts';
 import { loadChunkEvidenceRows, parseSectionPath } from '../documents/repo.ts';
@@ -93,6 +94,10 @@ const RetrieveParams = Type.Object({
 });
 
 const SubmitAnswerParams = Type.Object({
+  blocks: Type.Optional(Type.Union([Type.Array(ModelAnswerBlockSchema, { maxItems: MAX_ANSWER_BLOCKS }), Type.Unknown()], {
+    description: '可选结构化组件数组。简单问答可以省略。所有 evidence_ids 必须已在正文引用；文档仍须提交 quotes。' +
+      '组件只填证据号，不填文档标题、页码或记录字段。摘要和 Markdown 只能复制已引用摘录的完整行或整张表；有数值的行须保留原文实测标记。比较和图表须在同一摘录中核对指标、数值、单位、数据集、实验设置和统计口径；无法核实时只用正文。',
+  })),
   answer: Type.String({
     description:
       '给用户看的中文正文。事实性结论后面必须跟 [E1] 这样的证据号，编号只能来自检索工具返回的内容。',
@@ -139,6 +144,7 @@ export type SubmitAnswerArgs = Static<typeof SubmitAnswerParams>;
 export function submittedAnswerFromArgs(params: SubmitAnswerArgs): SubmittedAnswer {
   return {
     answer: params.answer,
+    ...(params.blocks === undefined ? {} : { blocks: params.blocks }),
     quotes: params.quotes.map((q) => ({ evidenceId: q.evidence_id, quote: q.quote })),
     evidenceGaps: params.evidence_gaps,
     limits: params.limits,
@@ -179,6 +185,7 @@ export interface SubmittedQuote {
  * 模型只能给证据号，出处由服务端回填。理由见 packages/shared/src/answer.ts 顶部。
  */
 export interface SubmittedAnswer {
+  blocks?: unknown;
   answer: string;
   /**
    * 模型提供的逐条摘录（O2）。

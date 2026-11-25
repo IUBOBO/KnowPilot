@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { evidenceMarker, formatSectionPath, MATERIAL_LABELS, RECORD_TYPE_LABELS,
-  type Citation, type DocumentCitation, type RecordCitation } from '@knowpilot/shared';
+import { citationEvidenceRequest, evidenceMarker, formatSectionPath, MATERIAL_LABELS, RECORD_TYPE_LABELS,
+  type Citation, type DocumentCitation, type OpenEvidence, type RecordCitation } from '@knowpilot/shared';
 import { fmtDateTime, fmtQueryTime } from '../../format.ts';
 
 const EXCERPT_PREVIEW = 240;
@@ -30,7 +30,21 @@ function sourceHref(citation: Citation): string | undefined {
   }
 }
 
-export function renderAnswerCitations(text: string, byId: ReadonlyMap<string, Citation>): ReactNode[] {
+export interface CitationOpenContext {
+  runId: string;
+  onOpenEvidence: OpenEvidence;
+}
+
+function openCitation(event: MouseEvent<HTMLAnchorElement>, citation: Citation, context: CitationOpenContext) {
+  if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+      event.defaultPrevented) return;
+  const request = citationEvidenceRequest(context.runId, citation);
+  if (request !== null && context.onOpenEvidence(request)) event.preventDefault();
+}
+
+export function renderAnswerCitations(
+  text: string, byId: ReadonlyMap<string, Citation>, context?: CitationOpenContext,
+): ReactNode[] {
   const nodes: ReactNode[] = [];
   let last = 0;
   let key = 0;
@@ -44,7 +58,8 @@ export function renderAnswerCitations(text: string, byId: ReadonlyMap<string, Ci
       nodes.push(
         <span className="cite-wrap" key={key++}>
           <Link className="cite-mark" to={href}
-            aria-label={`来源 ${match[1]}：${title}`}>
+            aria-label={`来源 ${match[1]}：${title}`}
+            {...(context === undefined ? {} : { onClick: (event) => openCitation(event, cite, context) })}>
             {match[1]}
           </Link>
           <CitationPopover citation={cite} />
