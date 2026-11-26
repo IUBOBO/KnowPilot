@@ -136,7 +136,7 @@ try {
   await expandedHit.click();
   const reader = desktop.getByRole('complementary', { name: readerName });
   await reader.getByRole('heading', { name: firstTitle }).waitFor();
-  await reader.getByText(new RegExp(`第 ${firstHits[1].page} 页 · 仪器检查`)).waitFor();
+  await reader.getByText(new RegExp(` · (?:第 ${firstHits[1].page} 页|PDF 物理页 ${firstHits[1].page}) · 仪器检查`)).waitFor();
   assert.equal(await reader.locator('mark').textContent(), firstHits[1].excerpt);
   await assertNoHorizontalOverflow(desktop);
   await assertSearchFormFits(desktop);
