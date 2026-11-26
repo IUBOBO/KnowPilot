@@ -296,6 +296,7 @@ import {
   deleteCodeAsset,
   findCodeAssetByLocation,
   getCodeAsset,
+  getCodeAssetEvidence,
   getCodeAssetOwner,
   insertCodeAsset,
   listCodeAssets,
@@ -2735,21 +2736,10 @@ export function createApp(deps: AppDeps): Hono<Env> {
   // 读权限已收口（阶段 4 欠账 5 的读侧）：需要 `code.read`。
   //
   app.get('/api/v1/code-assets/:id/evidence', (c) => {
-    const asset = getCodeAsset(deps.db, c.req.param('id'));
-    if (asset === null) throw new AppError('not_found', '没有这条数据集记录。');
-    const fields = [
-      { label: '名称', value: asset.name },
-      { label: '更新时点', value: asset.updatedAt },
-    ];
-    if (asset.profile?.version) fields.push({ label: '登记版本', value: asset.profile.version });
-    if (asset.profile?.format) fields.push({ label: '数据格式', value: asset.profile.format });
-    if (asset.profile?.scale) fields.push({ label: '规模', value: asset.profile.scale });
+    const evidence = getCodeAssetEvidence(deps.db, c.req.param('id'));
+    if (evidence === null) throw new AppError('not_found', '没有这条数据集记录。');
     c.header('Cache-Control', 'no-store');
-    return c.json({
-      kind: 'record', recordType: 'M-CODE', recordId: asset.id, sourceVersion: asset.updatedAt,
-      recordTitle: asset.name, recordUpdatedAt: asset.updatedAt, queryTime: new Date().toISOString(),
-      excerpt: '', fields, matchedBy: ['structured'],
-    } satisfies RecordRetrievalHit);
+    return c.json(evidence);
   });
 
   // 【列表为什么不按登记人过滤】数据集登记的目的就是"让全实验室知道数据在哪" ——

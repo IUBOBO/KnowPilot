@@ -12,6 +12,7 @@ import { createLabModels } from '../../server/src/agent/models.ts';
 import { createApp } from '../../server/src/app.ts';
 import { createSession, deleteSession, SESSION_COOKIE } from '../../server/src/auth/session.ts';
 import { insertUser } from '../../server/src/auth/users.ts';
+import { insertCodeAsset } from '../../server/src/code/repo.ts';
 import { loadConfig } from '../../server/src/config.ts';
 import { openDb } from '../../server/src/db/index.ts';
 
@@ -69,6 +70,7 @@ const exactQuote = `Check ${marker} optical drift.`;
 let toolSequence = 0;
 let onGenerate;
 let forcePartial = false;
+let includeNoteCode = false;
 function assistant(model, content, stopReason) {
   return { role: 'assistant', content, stopReason, api: model.api, provider: model.provider, model: model.id,
     usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15,
@@ -88,7 +90,8 @@ models.streamSimple = (model, context) => {
   const options = id === undefined && !hasRetrieved
     ? { name: 'retrieve', arguments: { query: marker, mode: 'keyword' } }
     : { name: 'submit_answer', arguments: {
-      answer: id === undefined ? '未找到合成依据。' : `${exactQuote} [${id}]`,
+      answer: id === undefined ? '未找到合成依据。' : `${exactQuote} [${id}]` +
+        (includeNoteCode ? '\n\n`literal[ E1 ] = "[E1]"`\n\n```text\nliteral [E1]\n```' : ''),
       quotes: id === undefined ? [] : [{ evidence_id: id, quote: exactQuote }],
       evidence_gaps: id === undefined || forcePartial ? ['没有找到完整依据'] : [], limits: [], confidence_notes: [], conflicts: [],
       ...(id === undefined ? {} : { blocks: [{ kind: 'documents', evidence_ids: [id] }] }),
@@ -517,6 +520,7 @@ try {
   const notePage = await makePage(browser, { width: 1440, height: 980 }, session().token);
   notePage.on('pageerror', (error) => pageErrors.push(error));
   await notePage.addInitScript(() => localStorage.setItem('knowpilot.ask.consent.v1', '1'));
+  includeNoteCode = true;
   await runSearch(notePage, marker, { documentId: noteDocument, kind: 'document' });
   await bodyPanel(notePage).getByRole('checkbox', { name: '选择 ' + noteDocumentTitle }).check();
   await notePage.getByRole('link', { name: '基于此资料问答' }).click();
@@ -525,13 +529,13 @@ try {
 
   const askAnswer = notePage.getByRole('article', { name: '回答', exact: true });
   const saveAsNote = askAnswer.getByRole('button', { name: '转为研究笔记', exact: true });
-  async function answerForNote(question) {
+  async function answerForNote(question, expectedQuestions) {
     await notePage.locator('.ask-form input').fill(question);
     const [received] = await Promise.all([
       notePage.waitForResponse((r) => requestPath(r) === '/api/v1/ask/stream'),
       notePage.locator('.ask-form button[type="submit"]').click(),
     ]);
-    assert.equal(received.request().postDataJSON().history, undefined);
+    assert.deepEqual(received.request().postDataJSON().history?.map((entry) => entry.question), expectedQuestions);
     assert((await received.text()).includes(exactQuote));
     await saveAsNote.waitFor();
   }
@@ -544,7 +548,10 @@ try {
   const fullNoteUrl = notePage.url();
   await noteBody.waitFor();
   assert((await noteBody.inputValue()).includes(exactQuote));
-  assert.match(await noteBody.inputValue(), /关联证据 \[E1\]/u);
+  assert.match(await noteBody.inputValue(), /关联证据 \[第 1 轮 · E1\]/u);
+  assert((await noteBody.inputValue()).includes('`literal[ E1 ] = "[E1]"`'));
+  assert((await noteBody.inputValue()).includes('```text\nliteral [E1]\n```'));
+  includeNoteCode = false;
   const sources = noteEditor.getByRole('region', { name: '关联问答与来源' });
   const sourceControl = sources.getByRole('button', { name: new RegExp(noteDocumentTitle) });
   await sourceControl.waitFor();
@@ -559,7 +566,8 @@ try {
   assert.equal(await sourceControl.evaluate((button) => document.activeElement === button), true);
   await noteEditor.getByLabel('标题').fill('合成笔记编辑后的标题');
   await noteEditor.getByLabel('标签').fill('校准，回归');
-  await noteBody.fill('研究者编辑内容');
+  const editedBody = '研究者编辑内容\n\n' + await noteBody.inputValue();
+  await noteBody.fill(editedBody);
   const saveNote = noteEditor.getByRole('button', { name: '保存笔记' });
   await saveNote.focus();
   await notePage.keyboard.press('Enter');
@@ -568,7 +576,7 @@ try {
   assert(await saveNote.evaluate((button) => button === document.activeElement));
   await notePage.reload();
   await noteBody.waitFor();
-  assert.equal(await noteBody.inputValue(), '研究者编辑内容');
+  assert.equal(await noteBody.inputValue(), editedBody);
   const list = notePage.getByRole('region', { name: '我的笔记' });
   await list.getByLabel('查找笔记').fill('回归');
   await list.getByRole('button', { name: '查找' }).click();
@@ -578,7 +586,7 @@ try {
   await noteEditor.getByRole('link', { name: /使用可用文档继续问答/ }).click();
   await notePage.waitForURL('**/ask');
   await noteScope.getByText(noteDocumentTitle, { exact: true }).waitFor();
-  assert.equal(await notePage.locator('.ask-form input').inputValue(), '合成笔记编辑后的标题');
+  assert.equal(await notePage.locator('.ask-form input').inputValue(), '');
   assert(!calls.slice(beforeContinue).some(({ pathname }) => pathname === '/api/v1/ask/stream'));
   assert.equal(modelCalls.length, savedWithoutModel);
 
@@ -591,7 +599,7 @@ try {
       if (index === -1) continue;
       const range = document.createRange();
       range.setStart(node, index);
-      range.setEnd(node, index + quote.length);
+      range.setEndAfter(element.querySelector('.cite-mark'));
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
@@ -603,9 +611,10 @@ try {
   await saveExcerpt.click();
   await notePage.waitForURL('**/knowledge/notes?note=*');
   await noteBody.waitFor();
-  assert.equal(await noteBody.inputValue(), exactQuote);
+  assert.match(await noteBody.inputValue(), /Check calibrationprobe optical drift\.\s*\[第 1 轮 · E1\]/u);
   await sources.getByText(/答复选段/).waitFor();
-  await notePage.goto(origin + '/ask');
+  await notePage.goBack();
+  await notePage.waitForURL('**/ask');
   await askAnswer.getByRole('button', { name: '追加到已有笔记', exact: true }).click();
   await list.getByRole('link', { name: '合成笔记编辑后的标题' }).click();
   assert.equal(notePage.url(), fullNoteUrl);
@@ -615,7 +624,85 @@ try {
   assert.equal(await sources.getByText(/运行编号/).count(), 2);
   assert((await noteBody.inputValue()).includes('研究者编辑内容'));
   assert((await noteBody.inputValue()).includes(exactQuote));
+  assert.match(await noteBody.inputValue(), /\[第 1 轮 · E1\][\s\S]+\[第 2 轮 · E1\]/u);
+  const paths = [];
+  for (const round of [1, 2]) {
+    const pending = notePage.waitForResponse((reply) => requestPath(reply).endsWith('/sources/E1') && reply.ok());
+    await sources.getByRole('button', { name: new RegExp('第 ' + round + ' 轮 · E1') }).click();
+    paths.push(requestPath(await pending));
+    await noteReader.getByText(noteSourceText, { exact: true }).waitFor();
+    await notePage.keyboard.press('Escape');
+    await noteReader.waitFor({ state: 'hidden' });
+  }
+  assert.equal(new Set(paths).size, 2);
   assert.equal(modelCalls.length, secondRunModelCalls);
+
+  // Follow the same research history entry back from the appended note.
+  await notePage.goBack();
+  await notePage.goBack();
+  await notePage.waitForURL('**/ask');
+  await noteScope.getByText(noteDocumentTitle, { exact: true }).waitFor();
+  const returnToSearch = calls.length;
+  await noteScope.getByRole('link', { name: '返回检索选资料' }).click();
+  await notePage.getByText(/输入关键词或自然语言问题/u).waitFor();
+  assert.equal(new URL(notePage.url()).searchParams.has('q'), false);
+  assert.equal(await notePage.getByRole('searchbox', { name: '关键词' }).inputValue(), '合成笔记编辑后的标题');
+  assert(!calls.slice(returnToSearch).some(({ pathname }) => ['/api/v1/search', '/api/v1/quick-search'].includes(pathname)));
+
+  const [explicitSearch] = await Promise.all([
+    notePage.waitForResponse(isBodySearch),
+    notePage.getByRole('button', { name: '搜索', exact: true }).click(),
+  ]);
+  assert.equal(new URL(explicitSearch.url()).searchParams.get('q'), '合成笔记编辑后的标题');
+  assert.equal(new URL(notePage.url()).searchParams.has('q'), false);
+  await notePage.getByRole('searchbox', { name: '关键词' }).fill(marker);
+  await notePage.getByRole('button', { name: '搜索', exact: true }).click();
+  await bodyPanel(notePage).getByRole('checkbox', { name: '选择 ' + noteDocumentTitle, exact: true }).check();
+  await notePage.getByRole('link', { name: '基于此资料问答' }).click();
+  await noteScope.getByText(noteDocumentTitle, { exact: true }).waitFor();
+  await answerForNote('重选资料后续研', ['继续核实合成校准']);
+  const answerSearchLink = askAnswer.getByRole('link', { name: '在检索中查看', exact: true });
+  assert.equal(new URL(await answerSearchLink.getAttribute('href'), origin).searchParams.has('q'), false);
+  const secondReturn = calls.length;
+  await answerSearchLink.click();
+  await notePage.getByText(/输入关键词或自然语言问题/u).waitFor();
+  assert.equal(await notePage.getByRole('searchbox', { name: '关键词' }).inputValue(), '合成笔记编辑后的标题');
+  assert(!calls.slice(secondReturn).some(({ pathname }) => ['/api/v1/search', '/api/v1/quick-search'].includes(pathname)));
+  await notePage.goBack();
+  await notePage.waitForURL('**/ask');
+  await noteScope.getByRole('button', { name: '移除' + noteDocumentTitle }).click();
+  await notePage.reload();
+  await noteScope.getByRole('alert').waitFor();
+  await noteScope.getByRole('button', { name: '改为全库检索' }).click();
+  await notePage.reload();
+  await notePage.locator('.ask-form input').waitFor();
+  assert.equal(await noteScope.count(), 0);
+  await answerForNote('切换全库后续研', ['继续核实合成校准', '重选资料后续研']);
+
+  // An ordinary sidebar navigation must not overwrite a prior note history entry.
+  await notePage.getByRole('link', { name: '统一检索', exact: true }).click();
+  await notePage.waitForURL('**/search');
+  await notePage.getByRole('link', { name: '知识问答', exact: true }).click();
+  await notePage.getByRole('heading', { name: marker, exact: true }).waitFor();
+  assert.equal(await notePage.getByRole('heading', { name: '切换全库后续研', exact: true }).count(), 0);
+  await answerForNote('普通问答入口中的提问', [marker]);
+  await notePage.goBack();
+  await notePage.goBack();
+  await notePage.waitForURL('**/ask');
+  await notePage.getByRole('heading', { name: '切换全库后续研', exact: true }).waitFor();
+  assert.equal(await notePage.getByRole('heading', { name: '普通问答入口中的提问', exact: true }).count(), 0);
+  await notePage.reload();
+  await notePage.getByRole('heading', { name: '切换全库后续研', exact: true }).waitFor();
+  await answerForNote('后退恢复续研', ['继续核实合成校准', '重选资料后续研', '切换全库后续研']);
+
+  // Ordinary search handoff restores the ordinary conversation only.
+  await runSearch(notePage, marker, { documentId: noteDocument, kind: 'document' });
+  await bodyPanel(notePage).getByRole('checkbox', { name: '选择 ' + noteDocumentTitle, exact: true }).check();
+  await notePage.getByRole('link', { name: '基于此资料问答' }).click();
+  await noteScope.getByText(noteDocumentTitle, { exact: true }).waitFor();
+  await answerForNote('普通检索中的提问', [marker, '普通问答入口中的提问']);
+  await notePage.goto(fullNoteUrl);
+  await sourceControl.first().waitFor();
 
   // Withdrawing the source after the note loads must still block a reader click.
   db.prepare("UPDATE documents SET status = 'uploaded' WHERE id = ?").run(noteDocument);
@@ -653,8 +740,37 @@ try {
   await notePage.getByRole('link', { name: '基于此资料问答', exact: true }).click();
   await noteScope.getByText(replacementTitle, { exact: true }).waitFor();
   await answerForNote('核对重新选择的合成资料');
+
+  const noteId = new URL(fullNoteUrl).searchParams.get('note');
+  const linkedRun = db.prepare('SELECT run_id FROM research_note_runs WHERE note_id=? ORDER BY rowid').get(noteId);
+  assert(linkedRun !== undefined);
+  const datasetTitle = '研究笔记合成数据集';
+  const version = now.toISOString();
+  const datasetId = insertCodeAsset(db, {
+    name: datasetTitle, location: 'fixture-dataset', project: null, host: null,
+    accessNote: null, notes: null, lastCheckResult: 'unchecked', createdBy: userId, profile: { version: 'v1' },
+  }, version);
+  db.prepare('INSERT INTO research_note_sources(note_id,run_id,citation_id,locator_json) VALUES(?,?,?,?)')
+    .run(noteId, linkedRun.run_id, 'E9', JSON.stringify({ kind: 'record', recordId: datasetId, recordType: 'M-CODE', sourceVersion: version }));
+  const datasetPath = '/api/v1/research-notes/' + noteId + '/runs/' + linkedRun.run_id + '/sources/E9/record';
+  await notePage.goto(fullNoteUrl);
+  const datasetSource = sources.getByRole('button', { name: /研究笔记合成数据集.*第 1 轮 · E9/u });
+  const datasetStart = calls.length;
+  const readableDataset = notePage.waitForResponse((reply) => requestPath(reply) === datasetPath && reply.ok());
+  await datasetSource.click();
+  assert.equal((await (await readableDataset).json()).recordTitle, datasetTitle);
+  await noteReader.getByRole('heading', { name: datasetTitle }).waitFor();
+  await notePage.keyboard.press('Escape');
+  await noteReader.waitFor({ state: 'hidden' });
+  db.prepare('UPDATE ask_records SET user_id = NULL WHERE run_id=?').run(linkedRun.run_id);
+  const withdrawnDataset = notePage.waitForResponse((reply) => requestPath(reply) === datasetPath && reply.status() === 404);
+  await datasetSource.click();
+  await withdrawnDataset;
+  await noteReader.getByText(/此证据不可读取/).waitFor();
+  assert.equal(await noteReader.getByRole('heading', { name: datasetTitle }).count(), 0);
+  assert(!calls.slice(datasetStart).some(({ pathname }) => pathname === '/api/v1/code-assets/' + datasetId + '/evidence'));
   assert.deepEqual(pageErrors, []);
-  console.log('PASS research-note full answer, excerpt, edit, search, multiple runs, live reader/withdrawal and no automatic model call');
+  console.log('PASS research-note save/edit/selection, run-qualified citations, private search prefill and scoped history, dataset reauthorization, withdrawal and no automatic model call');
 } catch (error) {
   console.error(error);
   process.exitCode = 1;

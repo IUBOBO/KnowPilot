@@ -6,6 +6,7 @@ import {
   type QuickSearchResponse, type RecordType, type RetrievalResponseV1,
 } from '@knowpilot/shared';
 import { apiGet, toApiError } from '../api.ts';
+import { readNoteSearchState, type NoteSearchState } from '../ask-session.ts';
 import { useAuth } from '../auth.tsx';
 import { PageTitle } from '../components/PageTitle.tsx';
 import { EvidenceViewer, openEvidenceLink, useEvidenceViewer } from '../components/evidence/EvidenceViewer.tsx';
@@ -44,11 +45,6 @@ function recordRequest(hit: QuickSearchHit): EvidenceOpenRequest | undefined {
   return { version: 1, locator: { kind: 'record', recordType, recordId: hit.id, sourceVersion: hit.updatedAt } };
 }
 
-interface NoteSearchState {
-  ownerId: string;
-  noteResearchTopic: string;
-}
-
 interface SearchResults {
   records: QuickSearchResponse['items'];
   body: RetrievalResponseV1 | null;
@@ -59,9 +55,7 @@ export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const { can, user } = useAuth();
   const { state } = useLocation();
-  const noteSearch: NoteSearchState | undefined =
-    user !== null && state?.ownerId === user.id && typeof state?.noteResearchTopic === 'string'
-      ? { ownerId: user.id, noteResearchTopic: state.noteResearchTopic.slice(0, 100) } : undefined;
+  const noteSearch = readNoteSearchState(state, user?.id);
   const kind = QUICK_SEARCH_KINDS.find((item) => item === params.get('kind')) ?? 'all';
   const allowDocumentScope = kind === 'all' || kind === 'document';
   const rawMaterial = allowDocumentScope ? params.get('material') : null;
@@ -85,16 +79,23 @@ export function SearchPage() {
     </>;
   }
   const scope: SearchScope = {
-    query: params.get('q')?.trim() ?? '',
+    query: noteSearch === undefined ? params.get('q')?.trim() ?? '' : noteSearch.submittedQuery ?? '',
     kind,
     material,
     documentId: documentId ?? undefined,
   };
   const allowDocuments = can('knowledge.read');
   const allowAsk = can('chat.use');
-  const scopeKey = JSON.stringify([user?.id, user?.role, allowDocuments, allowAsk, scope, noteSearch?.noteResearchTopic]);
+  const scopeKey = JSON.stringify([user?.id, user?.role, allowDocuments, allowAsk, scope, noteSearch]);
   return <SearchSession key={scopeKey} scope={scope} allowDocuments={allowDocuments} allowAsk={allowAsk}
-    noteSearch={noteSearch} onSearch={(next) => setParams(next, noteSearch === undefined ? undefined : { state: noteSearch })} />;
+    noteSearch={noteSearch} onSearch={(next) => {
+      if (noteSearch === undefined) setParams(next);
+      else {
+        const submittedQuery = next.get('q') ?? '';
+        next.delete('q');
+        setParams(next, { state: { ...noteSearch, submittedQuery } });
+      }
+    }} />;
 }
 
 function SearchSession({ scope, allowDocuments, allowAsk, noteSearch, onSearch }: {
@@ -177,7 +178,7 @@ function SearchSession({ scope, allowDocuments, allowAsk, noteSearch, onSearch }
   }
 
   function documentScopeHref(id: string | undefined) {
-    return `/search?${searchParams({ ...scope, kind: 'document', documentId: id })}`;
+    return `/search?${searchParams({ ...scope, query: noteSearch === undefined ? query : '', kind: 'document', documentId: id })}`;
   }
 
   const documentScopeTitle = passages[0]?.documentTitle ?? titleHits[0]?.title;
@@ -228,7 +229,7 @@ function SearchSession({ scope, allowDocuments, allowAsk, noteSearch, onSearch }
         <strong role="status">已选 {selected.size} 份资料</strong>
         <button type="button" onClick={() => setSelected(new Set())}>清空选择</button>
         {allowAsk && <Link className="search-ask-link" to="/ask" state={{
-          ...searchAskHandoff(scope, selected), ...(noteSearch === undefined ? {} : { noteResearch: true }),
+          ...searchAskHandoff(scope, selected), ...(noteSearch === undefined ? {} : { noteSearch }),
         }}>基于此资料问答</Link>}
       </div>}
       {results?.body && <SearchDocuments

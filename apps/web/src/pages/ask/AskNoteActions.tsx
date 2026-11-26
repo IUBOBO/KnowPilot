@@ -5,11 +5,13 @@ import { isAnswerBlocks } from '@knowpilot/shared/answer-blocks';
 import { apiPost, toApiError } from '../../api.ts';
 import { useAuth } from '../../auth.tsx';
 import { ErrorNotice } from '../../components/ErrorNotice.tsx';
+import { qualifyNoteCitations, selectedNoteText } from '../notes/note-citations.ts';
 
 export interface NoteDraft {
   ownerId: string;
   body: string;
   run: NoteRunInput;
+  citationIds: readonly string[];
 }
 
 function answerForNote({ answer }: AskResponse) {
@@ -44,7 +46,7 @@ export function AskNoteActions({ result }: { result: AskResponse }) {
       const range = window.getSelection();
       const inside = range?.rangeCount === 1 && range.anchorNode !== null && range.focusNode !== null &&
         body?.contains(range.anchorNode) && body.contains(range.focusNode);
-      setSelection(inside ? range?.toString().trim() ?? '' : '');
+      setSelection(inside ? selectedNoteText(range) : '');
     };
     document.addEventListener('selectionchange', update);
     return () => document.removeEventListener('selectionchange', update);
@@ -58,18 +60,24 @@ export function AskNoteActions({ result }: { result: AskResponse }) {
       return undefined;
     }
     setNotice('');
-    return { ownerId: user.id, body, run: { runId: result.runId, mode } };
+    return { ownerId: user.id, body, run: { runId: result.runId, mode },
+      citationIds: result.answer.citations.map(({ id }) => id) };
   }
 
   async function save(mode: 'answer' | 'selection') {
     const copy = draft(mode);
     if (copy === undefined || busy) return;
+    const body = qualifyNoteCitations(copy.body, 1, copy.citationIds, copy.run.mode);
+    if (body.length > NOTE_BODY_LIMIT) {
+      setNotice('加上来源标记后超过笔记长度上限，请缩短选段。');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const note = await apiPost<ResearchNote>('/api/v1/research-notes', {
         title: result.question.trim().slice(0, NOTE_TITLE_LIMIT) || '研究笔记',
-        body: copy.body, tags: [], runs: [copy.run],
+        body, tags: [], runs: [copy.run],
       });
       void navigate('/knowledge/notes?note=' + encodeURIComponent(note.id));
     } catch (err) {

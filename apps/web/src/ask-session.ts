@@ -13,7 +13,30 @@ export const ASK_SCOPE_SESSION_KEY = 'knowpilot.ask.document-scope.v1';
 export type SearchContext = Pick<SearchAskHandoffV1, 'query' | 'kind' | 'material' | 'documentId'> & {
   /** Scope conversation context for a note handoff without replacing tab history. */
   researchThread?: string;
+  noteResearchTopic?: string;
 };
+export interface NoteSearchState {
+  ownerId: string;
+  noteResearchTopic: string;
+  researchThread?: string;
+  submittedQuery?: string;
+}
+
+export function readResearchThread(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[a-z0-9_-]{1,80}$/iu.test(value) ? value : undefined;
+}
+
+export function readNoteSearchState(value: unknown, ownerId: string | undefined): NoteSearchState | undefined {
+  if (ownerId === undefined || value === null || typeof value !== 'object') return undefined;
+  const state = value as Partial<NoteSearchState>;
+  if (state.ownerId !== ownerId || typeof state.noteResearchTopic !== 'string') return undefined;
+  const researchThread = readResearchThread(state.researchThread);
+  if (state.researchThread !== undefined && researchThread === undefined) return undefined;
+  return { ownerId, noteResearchTopic: state.noteResearchTopic.slice(0, 100),
+    ...(researchThread === undefined ? {} : { researchThread }),
+    ...(typeof state.submittedQuery === 'string' ? { submittedQuery: state.submittedQuery.trim().slice(0, 100) } : {}) };
+}
+
 export type AskActivity = 'idle' | 'running' | 'answered' | 'failed';
 export interface AskTabTurn {
   question: string;

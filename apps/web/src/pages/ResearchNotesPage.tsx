@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  ASK_DOCUMENT_SCOPE_LIMIT, NOTE_BODY_LIMIT, NOTE_RUN_MODES, NOTE_TAG_CHARS, NOTE_TAG_LIMIT, NOTE_TITLE_LIMIT,
+  ASK_DOCUMENT_SCOPE_LIMIT, NOTE_BODY_LIMIT, NOTE_RUN_MODES, NOTE_TAG_CHARS, NOTE_TAG_LIMIT, NOTE_TITLE_LIMIT, evidenceMarker,
   type EvidenceOpenRequest, type NoteRunMode, type ResearchNote, type ResearchNoteSummary, type SearchAskHandoffV1,
 } from '@knowpilot/shared';
 import { apiDelete, apiGet, apiPatch, apiPost, isAbort, toApiError, type ApiError } from '../api.ts';
@@ -12,6 +12,7 @@ import { EvidenceViewer, useEvidenceViewer } from '../components/evidence/Eviden
 import { PageTitle } from '../components/PageTitle.tsx';
 import { fmtDateTime } from '../format.ts';
 import type { NoteDraft } from './ask/AskNoteActions.tsx';
+import { noteCitationLabel, qualifyNoteCitations } from './notes/note-citations.ts';
 import './notes/notes.css';
 
 interface NotesPage {
@@ -23,7 +24,8 @@ function noteDraftOf(state: unknown, ownerId: string): NoteDraft | undefined {
   if (typeof state !== 'object' || state === null || !('noteDraft' in state)) return undefined;
   const draft = state.noteDraft as NoteDraft | null;
   if (draft?.ownerId !== ownerId || typeof draft.body !== 'string' || draft.body.length > NOTE_BODY_LIMIT ||
-    typeof draft.run?.runId !== 'string' || !NOTE_RUN_MODES.includes(draft.run.mode)) return undefined;
+    typeof draft.run?.runId !== 'string' || !NOTE_RUN_MODES.includes(draft.run.mode) ||
+    !Array.isArray(draft.citationIds) || !draft.citationIds.every((id) => typeof id === 'string')) return undefined;
   return draft;
 }
 
@@ -187,18 +189,20 @@ function NoteForm({ note, url, draft, onSaved, onReload, onDeleted }: {
       version: 1, locator: source.locator, citation: { runId: run.runId, citationId: source.citationId },
     };
     const path = url + '/runs/' + encodeURIComponent(run.runId) + '/sources/' + encodeURIComponent(source.citationId);
-    return [{ request, requireMatchingVersion: true, ...(source.locator.kind === 'document' ? { sourcePath: path }
-      : source.locator.recordType === 'M-CODE' ? {} : { sourcePath: path + '/record' }) }];
+    return [{ request, requireMatchingVersion: true, sourcePath: source.locator.kind === 'document' ? path : path + '/record' }];
   }));
   const evidence = useEvidenceViewer(catalog, note.id + ':' + note.revision);
   const documentIds = [...new Set(catalog.flatMap(({ request }) => request.locator.kind === 'document'
     ? [request.locator.documentId] : []))];
   const handoff: SearchAskHandoffV1 | undefined = documentIds.length > 0 && documentIds.length <= ASK_DOCUMENT_SCOPE_LIMIT
-    ? { version: 1, query: note.title.slice(0, 100), kind: 'document', documentIds } : undefined;
+    ? { version: 1, query: '', kind: 'document', documentIds } : undefined;
 
   function applyDraft() {
     if (draft === undefined || append !== undefined) return;
-    const next = body === '' ? draft.body : body + '\n\n' + draft.body;
+    const oldIndex = note.runs.findIndex((run) => run.runId === draft.run.runId);
+    const round = oldIndex < 0 ? note.runs.length + 1 : oldIndex + 1;
+    const excerpt = qualifyNoteCitations(draft.body, round, draft.citationIds, draft.run.mode);
+    const next = body === '' ? excerpt : body + '\n\n' + excerpt;
     if (next.length > NOTE_BODY_LIMIT) {
       setNotice('追加后超过正文长度上限，请先缩短正文。');
       return;
@@ -276,21 +280,22 @@ function NoteForm({ note, url, draft, onSaved, onReload, onDeleted }: {
       <h3>继续研究</h3>
       {handoff === undefined
         ? <Link to="/search" state={{ noteResearchTopic: note.title.slice(0, 100), ownerId: user?.id }}>打开检索选取研究资料</Link>
-        : <Link to="/ask" state={{ searchHandoff: handoff, noteResearch: true }}>使用可用文档继续问答（{documentIds.length} 份）</Link>}
+        : <Link to="/ask" state={{ searchHandoff: handoff, noteSearch: { ownerId: user?.id, noteResearchTopic: note.title.slice(0, 100) } }}>使用可用文档继续问答（{documentIds.length} 份）</Link>}
     </section>
     {note.runs.length > 0 && <section aria-label="关联问答与来源">
       <h3>关联问答与来源</h3>
       <p className="dim">正文由你编辑。原始证据在阅读器中重新读取。</p>
-      <ol>{note.runs.map((run) => <li key={run.runId}>
-        <p>{run.question ?? '这次问答的原记录不可读取'} · {runModeLabel[run.mode]}</p>
+      {note.runs.length > 1 && evidenceMarker().test(body) && <p className="dim">未标轮次的旧引用请按以下问答核对。</p>}
+      <ol>{note.runs.map((run, index) => <li key={run.runId}>
+        <p>第 {index + 1} 轮 · {run.question ?? '这次问答的原记录不可读取'} · {runModeLabel[run.mode]}</p>
         <small className="dim">运行编号 {run.runId}</small>
         {run.sources.length === 0 ? <p className="dim">无可核实的引用记录。</p> :
           <ul>{run.sources.map((source) => <li key={source.citationId}>
             {source.status === 'available'
               ? <button type="button" onClick={(event) => evidence.openFrom({
                   version: 1, locator: source.locator, citation: { runId: run.runId, citationId: source.citationId },
-                }, event.currentTarget)}>查看来源 {source.title} [{source.citationId}]</button>
-              : <span className="dim">[{source.citationId}] {source.status === 'changed'
+                }, event.currentTarget)}>查看来源 {source.title} [{noteCitationLabel(index + 1, source.citationId)}]</button>
+              : <span className="dim">[{noteCitationLabel(index + 1, source.citationId)}] {source.status === 'changed'
                 ? '来源版本已变化，无法重读引用版本。' : '来源不可读取，可能已失效或无访问权限。'}</span>}
           </li>)}</ul>}
       </li>)}</ol>

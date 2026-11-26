@@ -72,7 +72,7 @@ function CitationMark({ cite, href, context }: { cite: Citation; href: string; c
   const label = cite.id.slice(1);
   const title = cite.sourceType === 'document' ? cite.documentTitle : cite.recordTitle;
   return <span className="cite-wrap" onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
-    <Link className="cite-mark" to={href} aria-label={'来源 ' + label + '：' + title}
+    <Link className="cite-mark" data-citation-id={cite.id} to={href} aria-label={'来源 ' + label + '：' + title}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onClick={(event) => {
         if (context !== undefined) openCitation(event, cite, context);
         if (event.defaultPrevented) {

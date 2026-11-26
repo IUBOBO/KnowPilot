@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, type LinkProps } from 'react-router-dom';
 import {
   FEEDBACK_DOWN_REASONS, FEEDBACK_NOTE_MAX_CHARS, FEEDBACK_REASON_LABELS,
   type Answer, type AnswerFeedback, type AskEvidenceReview, type AskResponse, type Citation,
@@ -26,11 +26,11 @@ interface AskAnswerProps {
   onRetry: () => void;
   blocks: ReactNode;
   onOpenEvidence?: OpenEvidence;
-  documentSearchHref?: (documentId: string) => string;
+  documentSearchLink?: (documentId: string) => Pick<LinkProps, 'to' | 'state'>;
 }
 
 export function AskAnswer({
-  result, byId, consent, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks, onOpenEvidence, documentSearchHref,
+  result, byId, consent, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks, onOpenEvidence, documentSearchLink,
 }: AskAnswerProps) {
   const sources = onOpenEvidence === undefined ? {} : { citationOpen: { runId: result.runId, onOpenEvidence } };
   return (
@@ -49,7 +49,7 @@ export function AskAnswer({
         {blocks ?? (result.answer.blocks !== undefined && (
           <Suspense fallback={null}>
             <AnswerBlocks response={result} {...(onOpenEvidence === undefined ? {} : { onOpenEvidence })}
-              {...(documentSearchHref === undefined ? {} : { documentSearchHref })} />
+              {...(documentSearchLink === undefined ? {} : { documentSearchLink })} />
           </Suspense>
         ))}
       </div>

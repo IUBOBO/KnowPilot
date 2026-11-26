@@ -9,6 +9,7 @@ import {
   type CodeAsset,
   type UpdateCodeAssetRequest,
   type DatasetProfile,
+  type RecordRetrievalHit,
 } from '@knowpilot/shared';
 import type { Db } from '../db/index.ts';
 
@@ -100,6 +101,24 @@ export function getCodeAsset(db: Db, id: string): CodeAsset | null {
     | unknown as AssetRow
     | undefined;
   return row === undefined ? null : toAsset(row);
+}
+
+/** Reuse the evidence projection without exposing filesystem or access details. */
+export function getCodeAssetEvidence(db: Db, id: string): RecordRetrievalHit | null {
+  const asset = getCodeAsset(db, id);
+  if (asset === null) return null;
+  const fields = [
+    { label: '名称', value: asset.name },
+    { label: '更新时点', value: asset.updatedAt },
+  ];
+  if (asset.profile?.version) fields.push({ label: '登记版本', value: asset.profile.version });
+  if (asset.profile?.format) fields.push({ label: '数据格式', value: asset.profile.format });
+  if (asset.profile?.scale) fields.push({ label: '规模', value: asset.profile.scale });
+  return {
+    kind: 'record', recordType: 'M-CODE', recordId: asset.id, sourceVersion: asset.updatedAt,
+    recordTitle: asset.name, recordUpdatedAt: asset.updatedAt, queryTime: new Date().toISOString(),
+    excerpt: '', fields, matchedBy: ['structured'],
+  };
 }
 
 /**

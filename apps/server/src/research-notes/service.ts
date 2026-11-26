@@ -3,13 +3,13 @@ import {
   type AuthUser, type DocumentEvidenceLocator, type NoteSource, type RecordEvidenceLocator, type RecordRetrievalHit, type ResearchNote,
 } from '@knowpilot/shared';
 import { rankingFields, rankingRecordId } from '../agent/journal-tool.ts';
-import { getCodeAsset } from '../code/repo.ts';
+import { getCodeAssetEvidence } from '../code/repo.ts';
 import type { Db } from '../db/index.ts';
 import { getChunkContext } from '../documents/repo.ts';
 import { recordContentFingerprint, recordDependsOnLinkedFields } from '../retrieval/records.ts';
 import { retrieveRecordsV1 } from '../retrieval/service.ts';
 import { getJournalById, getRankingByPeriod } from '../submissions/repo.ts';
-import { readResearchNote, type StoredNote, type StoredNoteSource } from './repo.ts';
+import { readOwnedAskQuestion, readResearchNote, type StoredNote, type StoredNoteSource } from './repo.ts';
 
 function readDocumentSource(db: Db, user: AuthUser, locator: DocumentEvidenceLocator) {
   if (!hasPermission(user.role, 'knowledge.read')) return null;
@@ -31,12 +31,6 @@ function presentSource(db: Db, user: AuthUser, source: StoredNoteSource): NoteSo
     if (context === null) return unavailable;
     return context.sourceVersion === locator.sourceVersion ? available(context.document.title) : changed;
   }
-  if (locator.recordType === 'M-CODE') {
-    if (!hasPermission(user.role, 'code.read')) return unavailable;
-    const asset = getCodeAsset(db, locator.recordId);
-    if (asset === null) return unavailable;
-    return asset.updatedAt === locator.sourceVersion ? available(asset.name) : changed;
-  }
   const record = readExactRecordSource(db, user, locator);
   if (record === null || (recordDependsOnLinkedFields(locator.recordType) && source.recordFingerprint === undefined)) return unavailable;
   return matchingRecord(source, locator, record) ? available(record.recordTitle) : changed;
@@ -48,6 +42,9 @@ function matchingRecord(source: StoredNoteSource, locator: RecordEvidenceLocator
 }
 
 function readExactRecordSource(db: Db, user: AuthUser, locator: RecordEvidenceLocator): RecordRetrievalHit | null {
+  if (locator.recordType === 'M-CODE') {
+    return hasPermission(user.role, 'code.read') ? getCodeAssetEvidence(db, locator.recordId) : null;
+  }
   if (locator.recordType === 'M-JOURNAL') {
     if (!hasPermission(user.role, 'journal.read')) return null;
     const [journalId, year, system, ...dimension] = locator.recordId.split(':');
@@ -73,14 +70,10 @@ function readExactRecordSource(db: Db, user: AuthUser, locator: RecordEvidenceLo
   return record?.kind === 'record' ? record : null;
 }
 
-function ownRunQuestion(db: Db, user: AuthUser, runId: string) {
-  return db.prepare('SELECT question FROM ask_records WHERE run_id = ? AND user_id = ?').get(runId, user.id)?.question as string | undefined;
-}
-
 /** Project only the currently authorized sources of a note fetched for this owner. */
 export function presentResearchNote(db: Db, user: AuthUser, note: StoredNote): ResearchNote {
   return { ...note, runs: note.runs.map((run) => {
-    const question = ownRunQuestion(db, user, run.runId);
+    const question = readOwnedAskQuestion(db, user.id, run.runId);
     return {
       runId: run.runId, mode: run.mode,
       ...(question === undefined ? {} : { question }),
@@ -95,7 +88,7 @@ export function presentResearchNote(db: Db, user: AuthUser, note: StoredNote): R
 function linkedSource(db: Db, user: AuthUser, noteId: string, runId: string, citationId: string) {
   const note = readResearchNote(db, user.id, noteId);
   const run = note.runs.find((entry) => entry.runId === runId);
-  return ownRunQuestion(db, user, runId) === undefined ? undefined : run?.sources.find((entry) => entry.citationId === citationId);
+  return readOwnedAskQuestion(db, user.id, runId) === undefined ? undefined : run?.sources.find((entry) => entry.citationId === citationId);
 }
 
 function missingSource(): never {

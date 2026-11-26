@@ -9,6 +9,7 @@ import { insertAskRecord } from '../agent/records.ts';
 import { createApp } from '../app.ts';
 import { SESSION_COOKIE, createSession } from '../auth/session.ts';
 import { insertUser } from '../auth/users.ts';
+import { insertCodeAsset } from '../code/repo.ts';
 import { loadConfig } from '../config.ts';
 import { openDb } from '../db/index.ts';
 import { recordContentFingerprint, submissionFields } from '../retrieval/records.ts';
@@ -106,6 +107,12 @@ app = createApp({ db, config, schemaVersion: migration.toVersion, startedAt: Dat
 assert.deepEqual(await (await get(item, owner)).json(), updated);
 
 const sourceTime = now.toISOString();
+const datasetTitle = '合成数据集';
+const datasetLocation = 'fixture-location-never-in-evidence';
+const datasetId = insertCodeAsset(db, {
+  name: datasetTitle, location: datasetLocation, project: null, host: null, accessNote: null, notes: null,
+  lastCheckResult: 'unchecked', createdBy: owner.id, profile: { version: 'v1', format: 'csv' },
+}, sourceTime);
 const documentTitle = '合成受保护文档';
 const sourceText = '合成文档私有测试内容';
 const recordTitle = '合成受保护专利';
@@ -153,13 +160,14 @@ db.prepare(`
     recordFingerprint: recordContentFingerprint(journalTitle, rankingFields(ranking, journalTitle)) },
   { id: 'E5', recordType: 'M-SUBMIT', recordId: submissionId, sourceVersion: sourceTime,
     recordFingerprint: recordContentFingerprint(submissionTitle, submissionFields(submission)) },
+  { id: 'E6', recordType: 'M-CODE', recordId: datasetId, sourceVersion: sourceTime },
 ]), sourceTime);
 const sourceResponse = await post(url, { ...valid, runs: [{ runId: 'fixture-own-2', mode: 'answer' }] }, owner);
 assert.equal(sourceResponse.status, 201);
 const sourceNote = await sourceResponse.json() as ResearchNote;
 const sourceNoteUrl = url + '/' + sourceNote.id;
 const readerUrl = sourceNoteUrl + '/runs/fixture-own-2/sources/E1';
-assert.deepEqual(sourceNote.runs[0]?.sources.map(({ status }) => status), ['available', 'available', 'unavailable', 'available', 'available']);
+assert.deepEqual(sourceNote.runs[0]?.sources.map(({ status }) => status), ['available', 'available', 'unavailable', 'available', 'available', 'available']);
 assert(!JSON.stringify(sourceNote).includes(sourceText));
 assert.equal((await get(readerUrl)).status, 401);
 assert.equal((await get(readerUrl, other)).status, 404);
@@ -176,6 +184,26 @@ const submissionReader = readerUrl.replace('/E1', '/E5/record');
 assert.equal((await get(journalReader, owner)).status, 200);
 assert.equal((await get(submissionReader, owner)).status, 200);
 assert.equal((await get(submissionReader, admin)).status, 404);
+const datasetReader = readerUrl.replace('/E1', '/E6/record');
+const sharedDatasetReader = '/api/v1/code-assets/' + datasetId + '/evidence';
+const datasetResponse = await get(datasetReader, owner);
+assert.equal(datasetResponse.status, 200);
+assert.equal(datasetResponse.headers.get('Cache-Control'), 'private, no-store');
+const dataset = await datasetResponse.json() as RecordRetrievalHit;
+const sharedDataset = await (await get(sharedDatasetReader, owner)).json() as RecordRetrievalHit;
+assert.equal(dataset.recordTitle, datasetTitle);
+assert.deepEqual(dataset.fields, sharedDataset.fields);
+assert(!JSON.stringify(dataset).includes(datasetLocation));
+assert.equal((await get(datasetReader)).status, 401);
+for (const actor of [other, admin]) {
+  const denied = await get(datasetReader, actor);
+  assert.equal(denied.status, 404);
+  assert(!(await denied.text()).includes(datasetTitle));
+}
+assert.equal((await get(datasetReader.replace('fixture-own-2', 'fixture-own-1'), owner)).status, 404);
+db.prepare('UPDATE code_assets SET updated_at = ? WHERE id = ?').run('2026-02-02T00:00:00.000Z', datasetId);
+assert.equal((await get(datasetReader, owner)).status, 404);
+db.prepare('UPDATE code_assets SET updated_at = ? WHERE id = ?').run(sourceTime, datasetId);
 
 db.prepare('UPDATE documents SET index_version = 3 WHERE id = ?').run('source-doc');
 db.prepare('UPDATE people SET name = ? WHERE id = ?').run('已编辑合成作者', 'source-person');
@@ -183,7 +211,7 @@ db.prepare('UPDATE people SET name = ? WHERE id = ?').run('已编辑合成作者
 insertManualRanking(db, { ...rankInput, rank: 'Q3' }, sourceTime);
 insertManualRanking(db, { ...latestRank, rank: 'Q4' }, sourceTime);
 let metadata = await (await get(sourceNoteUrl, owner)).json() as ResearchNote;
-assert.deepEqual(metadata.runs[0]?.sources.map(({ status }) => status), ['changed', 'changed', 'unavailable', 'changed', 'changed']);
+assert.deepEqual(metadata.runs[0]?.sources.map(({ status }) => status), ['changed', 'changed', 'unavailable', 'changed', 'changed', 'available']);
 assert.equal((await get(readerUrl + '/file', owner)).status, 404);
 assert.equal((await get(journalReader, owner)).status, 404);
 assert.equal((await get(submissionReader, owner)).status, 404);
@@ -207,9 +235,11 @@ db.prepare('UPDATE people SET name = ? WHERE id = ?').run('合成作者', 'sourc
 // Simulate a policy change only within this fixture. Production roles retain their shared read permissions.
 const memberPermissions = ROLE_PERMISSIONS.member;
 try {
-  ROLE_PERMISSIONS.member = memberPermissions.filter((permission) => !permission.startsWith('patent.read.'));
+  ROLE_PERMISSIONS.member = memberPermissions.filter((permission) => permission !== 'code.read' && !permission.startsWith('patent.read.'));
   metadata = await (await get(sourceNoteUrl, owner)).json() as ResearchNote;
-    assert.deepEqual(metadata.runs[0]?.sources.map(({ status }) => status), ['unavailable', 'unavailable', 'unavailable', 'changed', 'changed']);
+  assert.deepEqual(metadata.runs[0]?.sources.map(({ status }) => status), ['unavailable', 'unavailable', 'unavailable', 'changed', 'changed', 'unavailable']);
+  assert.equal((await get(datasetReader, owner)).status, 404);
+  assert(!JSON.stringify(metadata).includes(datasetTitle));
   assert(!JSON.stringify(metadata).includes('source-record'));
   assert(!JSON.stringify(metadata).includes('source-chunk'));
   assert(!JSON.stringify(await (await get(readerUrl, owner)).json()).includes(sourceText));
@@ -218,7 +248,16 @@ try {
 } finally {
   ROLE_PERMISSIONS.member = memberPermissions;
 }
+// Opening a source rechecks the run even when the owner already has a loaded note.
+db.prepare('UPDATE ask_records SET user_id = ? WHERE run_id = ?').run(other.id, 'fixture-own-2');
+const revokedRun = await get(datasetReader, owner);
+assert.equal(revokedRun.status, 404);
+assert(!(await revokedRun.text()).includes(datasetTitle));
+assert.equal((await get(sharedDatasetReader, owner)).status, 200);
+db.prepare('UPDATE ask_records SET user_id = ? WHERE run_id = ?').run(owner.id, 'fixture-own-2');
+assert.equal((await get(datasetReader, owner)).status, 200);
 assert.equal((await post(sourceNoteUrl + '?revision=1', undefined, owner, 'DELETE')).status, 200);
+assert.equal((await get(datasetReader, owner)).status, 404);
 assert.equal(db.prepare('SELECT count(*) AS n FROM research_note_sources').get()?.n, 0);
 
 assert.equal((await post(item + '?revision=2', undefined, owner, 'DELETE')).status, 200);

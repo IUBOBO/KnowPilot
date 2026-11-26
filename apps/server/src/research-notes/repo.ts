@@ -5,7 +5,6 @@ import {
   type ResearchNoteSummary, type TraceCitationRef, type TraceRecordEvidence, type UpdateResearchNote,
 } from '@knowpilot/shared';
 import type { Db } from '../db/index.ts';
-import { findAskRecordOwner } from '../feedback/repo.ts';
 
 interface NoteRow {
   id: string;
@@ -92,6 +91,10 @@ function locatorFor(citation: TraceCitationRef, records: readonly TraceRecordEvi
   return recordType === undefined ? null : { kind: 'record', recordId: citation.recordId, recordType, sourceVersion: version };
 }
 
+export function readOwnedAskQuestion(db: Db, owner: string, runId: string): string | undefined {
+  return db.prepare('SELECT question FROM ask_records WHERE run_id = ? AND user_id = ?').get(runId, owner)?.question as string | undefined;
+}
+
 function appendRuns(db: Db, owner: string, noteId: string, runs: readonly NoteRunInput[]) {
   if (runs.length === 0) return;
   const stored = db.prepare('SELECT run_id FROM research_note_runs WHERE note_id=?').all(noteId);
@@ -102,7 +105,7 @@ function appendRuns(db: Db, owner: string, noteId: string, runs: readonly NoteRu
   const addRun = db.prepare('INSERT INTO research_note_runs(note_id,run_id,mode) VALUES(?,?,?)');
   const addSource = db.prepare('INSERT INTO research_note_sources(note_id,run_id,citation_id,locator_json) VALUES(?,?,?,?)');
   for (const run of requested) {
-    if (findAskRecordOwner(db, run.runId) !== owner) throw new AppError('not_found', '无法关联这次问答。');
+    if (readOwnedAskQuestion(db, owner, run.runId) === undefined) throw new AppError('not_found', '无法关联这次问答。');
     addRun.run(noteId, run.runId, run.mode);
     const row = trace.get(run.runId, owner) as { citation_map_json: string; record_evidence_json: string } | undefined;
     if (row === undefined) continue;
