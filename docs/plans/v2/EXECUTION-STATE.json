@@ -133,15 +133,19 @@
     },
     {
       "id": "G2",
-      "status": "in_progress",
+      "status": "passed",
       "report": "docs/plans/v2/gates/G2.md",
-      "merge_sha": null,
+      "merge_sha": "026bf1dfa060aa359a5ed8e1b7d709494a13625e",
       "acceptance": {
-        "status": "pending",
-        "reviewer": null,
+        "status": "passed",
+        "reviewer": "coordinator",
         "evidence": [
           "docs/plans/v2/gates/G2.md"
-        ]
+        ],
+        "reason": "Full G2 chain and role, history, error, degradation, cancellation, recovery and server events verified on the actual merge SHA following approved execution.",
+        "model_checks": "not_run",
+        "commands_passed": 8,
+        "commands_total": 9
       },
       "blockers": [],
       "baseline_sha": "37556f2f894935a25c56c26003dbd265cdec13db",
@@ -201,6 +205,20 @@
           "5": "3fb1a2d82ec2db9a3ffd835759d874949e7889a5",
           "7": "aa0fe140a9678a388472a2ab932f8e72be9f7d74"
         }
+      },
+      "next_phase_ready_nodes": [
+        "9.ready"
+      ],
+      "completed_nodes": [
+        "G2.pass"
+      ],
+      "feature_merge_shas": {
+        "3": "e79559903f909c4166fb9f21616c7b12d686744c",
+        "4": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
+        "5": "3fb1a2d82ec2db9a3ffd835759d874949e7889a5",
+        "6": "d1013c3e72f3844acea43ee808cf1ac480658aab",
+        "7": "aa0fe140a9678a388472a2ab932f8e72be9f7d74",
+        "8": "026bf1dfa060aa359a5ed8e1b7d709494a13625e"
       }
     },
     {
@@ -513,7 +531,7 @@
     {
       "issue": 8,
       "stable_id": "V2-08",
-      "state": "awaiting_merge_approval",
+      "state": "accepted",
       "owner_role": "Conversation context",
       "owner": "coordinator",
       "branch": "codex/v2-08-context",
@@ -522,20 +540,22 @@
         "8.ready",
         "8.N1",
         "8.N2",
-        "8.N3"
+        "8.N3",
+        "8.released"
       ],
       "prs": [
         28
       ],
-      "head_sha": "71658d6bb2052ead92850361e3082fc10f8f8e00",
-      "merge_sha": null,
+      "head_sha": "9df0382d979d70759d1ac5f2b6b5dae58e3eb84e",
+      "merge_sha": "026bf1dfa060aa359a5ed8e1b7d709494a13625e",
       "acceptance": {
-        "status": "pre_merge_passed",
+        "status": "passed",
         "evidence": [
           "docs/plans/v2/V2-08.md",
           "docs/plans/v2/gates/G2.md"
         ],
-        "reviewer": "independent specification and implementation reviews"
+        "reviewer": "independent specification and implementation reviews",
+        "reason": "The four Issue criteria passed on the actual merge SHA and the Issue is closed."
       },
       "release_node": "8.released",
       "base_sha": "aa0fe140a9678a388472a2ab932f8e72be9f7d74",
@@ -547,7 +567,8 @@
           "7.released"
         ],
         "baseline_sha": "aa0fe140a9678a388472a2ab932f8e72be9f7d74"
-      }
+      },
+      "issue_state": "closed"
     },
     {
       "issue": 9,
@@ -650,7 +671,8 @@
         "13-B.7.pre",
         "13-B.5.post",
         "13-B.7.post",
-        "13-B.8.pre"
+        "13-B.8.pre",
+        "13-B.8.post"
       ],
       "prs": [
         16
@@ -1128,10 +1150,26 @@
                   "exit": 1,
                   "passed_assertions": 28,
                   "total_assertions": 30
+                },
+                "replay_after_main_sync": {
+                  "status": "passed",
+                  "pull_request_head": "9df0382d979d70759d1ac5f2b6b5dae58e3eb84e",
+                  "commands_passed": 20,
+                  "commands_total": 21
                 }
               },
               "post": {
-                "status": "not_run"
+                "status": "passed",
+                "merge_sha": "026bf1dfa060aa359a5ed8e1b7d709494a13625e",
+                "commands_passed": 20,
+                "commands_total": 21,
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
               }
             }
           }
@@ -1143,5 +1181,5 @@
       }
     }
   ],
-  "development_baseline_sha": "aa0fe140a9678a388472a2ab932f8e72be9f7d74"
+  "development_baseline_sha": "026bf1dfa060aa359a5ed8e1b7d709494a13625e"
 }
