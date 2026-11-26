@@ -1165,7 +1165,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
     }
 
     if (accepts('document') && hasPermission(user.role, 'knowledge.read')) {
-      for (const d of searchDocumentTitles(deps.db, keyword, perKind)) {
+      const material = parseMaterial(c.req.query('material'));
+      const documentId = parseRetrievalId(c.req.query('documentId'));
+      for (const d of searchDocumentTitles(deps.db, keyword, perKind, material, documentId)) {
         items.push({
           kind: 'document',
           id: d.id,
