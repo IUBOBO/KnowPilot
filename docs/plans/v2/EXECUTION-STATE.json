@@ -182,21 +182,24 @@
         "docs_pr_merge_sha": "65e8a7e6ba5d001a7fc48ab5ab072626c9d92baf"
       },
       "wave_2": {
-        "status": "awaiting_merge_approval",
+        "status": "accepted",
         "scope": [
           5,
           7
         ],
         "baseline_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
-        "deferred": {
-          "8.ready": "wait_for_7_release_and_approval"
-        },
+        "deferred": {},
         "combined_pre": {
           "status": "passed",
           "tree_sha": "3e09991b19c1d4c3abcfc1f3abfe29e9551210fc",
           "commands_passed": 6,
           "commands_total": 6,
           "commands_sha256": "64cdb7be743a599d47db32deb6445cc9b6efb175ce1ff6f9b0473e8bdb486497"
+        },
+        "latest_verified_main_sha": "aa0fe140a9678a388472a2ab932f8e72be9f7d74",
+        "merged": {
+          "5": "3fb1a2d82ec2db9a3ffd835759d874949e7889a5",
+          "7": "aa0fe140a9678a388472a2ab932f8e72be9f7d74"
         }
       }
     },
@@ -403,7 +406,7 @@
     {
       "issue": 5,
       "stable_id": "V2-05",
-      "state": "awaiting_merge_approval",
+      "state": "accepted",
       "owner_role": "PDF viewer",
       "owner": "g2_pdf",
       "branch": "codex/v2-05-pdf-reader",
@@ -412,27 +415,30 @@
         "5.ready",
         "5.N1",
         "5.N2",
-        "5.N3"
+        "5.N3",
+        "5.released"
       ],
       "prs": [
         26
       ],
       "head_sha": "d5587bd08419d9544ea43e64113f6209314d5445",
-      "merge_sha": null,
+      "merge_sha": "3fb1a2d82ec2db9a3ffd835759d874949e7889a5",
       "acceptance": {
-        "status": "pre_merge_passed",
+        "status": "passed",
         "evidence": [
           "docs/plans/v2/V2-05.md",
           "docs/plans/v2/gates/G2.md"
         ],
-        "reviewer": "independent specification and implementation reviews"
+        "reviewer": "independent specification and implementation reviews",
+        "reason": "All Issue acceptance criteria replayed on exact merge SHA with approved legacy failures and real-model skips preserved."
       },
       "release_node": "5.released",
       "base_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
       "dispatch": {
         "released_by": "4.released",
         "baseline_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3"
-      }
+      },
+      "issue_state": "closed"
     },
     {
       "issue": 6,
@@ -470,7 +476,7 @@
     {
       "issue": 7,
       "stable_id": "V2-07",
-      "state": "awaiting_merge_approval",
+      "state": "accepted",
       "owner_role": "Search UI",
       "owner": "g2_search",
       "branch": "codex/v2-07-search-results",
@@ -479,46 +485,69 @@
         "7.ready",
         "7.N1",
         "7.N2",
-        "7.N3"
+        "7.N3",
+        "7.released"
       ],
       "prs": [
         25
       ],
       "head_sha": "c5bf1f7714c3fb3e273a01457a819221b90f503d",
-      "merge_sha": null,
+      "merge_sha": "aa0fe140a9678a388472a2ab932f8e72be9f7d74",
       "acceptance": {
-        "status": "pre_merge_passed",
+        "status": "passed",
         "evidence": [
           "docs/plans/v2/V2-07.md",
           "docs/plans/v2/gates/G2.md"
         ],
-        "reviewer": "independent specification and implementation reviews"
+        "reviewer": "independent specification and implementation reviews",
+        "reason": "All Issue acceptance criteria replayed on exact merge SHA with approved legacy failures and real-model skips preserved."
       },
       "release_node": "7.released",
       "base_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
       "dispatch": {
         "released_by": "4.released",
         "baseline_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3"
-      }
+      },
+      "issue_state": "closed"
     },
     {
       "issue": 8,
       "stable_id": "V2-08",
-      "state": "planned",
+      "state": "awaiting_merge_approval",
       "owner_role": "Conversation context",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
-      "prs": [],
-      "head_sha": null,
+      "owner": "coordinator",
+      "branch": "codex/v2-08-context",
+      "worktree_alias": "KnowPilot-V2-08",
+      "completed_nodes": [
+        "8.ready",
+        "8.N1",
+        "8.N2",
+        "8.N3"
+      ],
+      "prs": [
+        28
+      ],
+      "head_sha": "71658d6bb2052ead92850361e3082fc10f8f8e00",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "pre_merge_passed",
+        "evidence": [
+          "docs/plans/v2/V2-08.md",
+          "docs/plans/v2/gates/G2.md"
+        ],
+        "reviewer": "independent specification and implementation reviews"
       },
-      "release_node": "8.released"
+      "release_node": "8.released",
+      "base_sha": "aa0fe140a9678a388472a2ab932f8e72be9f7d74",
+      "dispatch": {
+        "released_by": [
+          "G1.pass",
+          "3.full-accepted",
+          "4.released",
+          "7.released"
+        ],
+        "baseline_sha": "aa0fe140a9678a388472a2ab932f8e72be9f7d74"
+      }
     },
     {
       "issue": 9,
@@ -618,7 +647,10 @@
         "13-B.4.pre",
         "13-B.4.post",
         "13-B.5.pre",
-        "13-B.7.pre"
+        "13-B.7.pre",
+        "13-B.5.post",
+        "13-B.7.post",
+        "13-B.8.pre"
       ],
       "prs": [
         16
@@ -981,7 +1013,23 @@
                 }
               },
               "post": {
-                "status": "not_run"
+                "status": "passed",
+                "merge_sha": "3fb1a2d82ec2db9a3ffd835759d874949e7889a5",
+                "merge_tree_sha": "31b6b623fddef2113e9f363663c55e80c923d541",
+                "commands_passed": 14,
+                "commands_total": 15,
+                "evidence_hashes": {
+                  "commands.json": "b2f0ef4353462efd2bbebb5f39503c1fcd5dd6857286823eeac6af9f3f555e9d",
+                  "targeted.json": "84c2b095b162deb4a64189bf78ef09d02978ed7bb7a24a19b269694454e98995",
+                  "blockers.json": "f3603d0276fc0286c5c10a63bf7780ec8cf5aa0523b6d15050d93fce7953c8d2"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
               },
               "prior_pre": {
                 "status": "passed",
@@ -1027,7 +1075,23 @@
                 }
               },
               "post": {
-                "status": "not_run"
+                "status": "passed",
+                "merge_sha": "aa0fe140a9678a388472a2ab932f8e72be9f7d74",
+                "merge_tree_sha": "3540b8cc00a8af9c52ad2ffc726e14e06a145b62",
+                "commands_passed": 18,
+                "commands_total": 19,
+                "evidence_hashes": {
+                  "commands.json": "8a10e58610c16726aa8a1566d0b39cc8bbac33070d91aff049a27b3e51d32ba9",
+                  "targeted.json": "edcfb9b6db040d9dea0259d408a8ffcd0cb543351ceb34754737e4b5e318dd12",
+                  "blockers.json": "00b85312ee51f088873658c6c84431e90a2aa29e08598f0692276aed3d7b9bd2"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
               },
               "prior_pre": {
                 "status": "passed",
@@ -1049,6 +1113,26 @@
                   "total_assertions": 30
                 }
               }
+            },
+            "8": {
+              "pr": 28,
+              "pre": {
+                "status": "passed",
+                "pull_request_head": "71658d6bb2052ead92850361e3082fc10f8f8e00",
+                "verified_release_tree_sha": "06f34258d743bbe41309ee35a10368ef44987eed",
+                "commands_passed": 20,
+                "commands_total": 21,
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "not_run"
+              }
             }
           }
         },
@@ -1059,5 +1143,5 @@
       }
     }
   ],
-  "development_baseline_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3"
+  "development_baseline_sha": "aa0fe140a9678a388472a2ab932f8e72be9f7d74"
 }
