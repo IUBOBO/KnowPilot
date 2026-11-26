@@ -223,7 +223,7 @@
     },
     {
       "id": "G3",
-      "status": "planned",
+      "status": "in_progress",
       "report": "docs/plans/v2/gates/G3.md",
       "merge_sha": null,
       "acceptance": {
@@ -231,7 +231,10 @@
         "reviewer": null,
         "evidence": []
       },
-      "blockers": []
+      "blockers": [],
+      "feature_merge_shas": {
+        "9": "33d52b998423970a29871c273cabad05665e90f0"
+      }
     },
     {
       "id": "G4",
@@ -573,31 +576,57 @@
     {
       "issue": 9,
       "stable_id": "V2-09",
-      "state": "planned",
+      "state": "accepted",
       "owner_role": "Notes/core",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
-      "prs": [],
-      "head_sha": null,
-      "merge_sha": null,
+      "owner": "coordinator",
+      "branch": "codex/v2-09-research-notes",
+      "worktree_alias": "KnowPilot-V2-09",
+      "completed_nodes": [
+        "9.ready",
+        "9.N1",
+        "9.N2",
+        "9.N3",
+        "9.merged",
+        "9.released"
+      ],
+      "prs": [
+        30
+      ],
+      "head_sha": "b67781474b45e2cf6664dbe0b9dbdfb1dfb7a1d7",
+      "merge_sha": "33d52b998423970a29871c273cabad05665e90f0",
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "passed",
+        "evidence": [
+          "docs/plans/v2/V2-09.md",
+          "docs/plans/v2/V2-13.md"
+        ],
+        "reviewer": "independent specification and implementation reviews",
+        "reason": "All four acceptance criteria verified on the actual merge SHA; 13-B.9.post passed with the two unchanged G2 assertions."
       },
-      "release_node": "9.released"
+      "release_node": "9.released",
+      "base_sha": "819315c7921796508d35e495cbc4af2b94786fe3",
+      "dispatch": {
+        "released_by": [
+          "G2.pass",
+          "3.full-accepted",
+          "4.released"
+        ],
+        "baseline_sha": "819315c7921796508d35e495cbc4af2b94786fe3"
+      },
+      "issue_state": "closed",
+      "issue_closed_at": "2026-11-26T16:01:21Z"
     },
     {
       "issue": 10,
       "stable_id": "V2-10",
-      "state": "planned",
+      "state": "in_progress",
       "owner_role": "Notes/export",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
+      "owner": "g3_export",
+      "branch": "codex/v2-10-note-export",
+      "worktree_alias": "KnowPilot-V2-10",
+      "completed_nodes": [
+        "10.ready"
+      ],
       "prs": [],
       "head_sha": null,
       "merge_sha": null,
@@ -606,17 +635,28 @@
         "evidence": [],
         "reviewer": null
       },
-      "release_node": "10.released"
+      "release_node": "10.released",
+      "base_sha": "33d52b998423970a29871c273cabad05665e90f0",
+      "dispatch": {
+        "released_by": [
+          "G2.pass",
+          "9.released"
+        ],
+        "baseline_sha": "33d52b998423970a29871c273cabad05665e90f0",
+        "test_environment": "isolated SQLite v37 and localhost"
+      }
     },
     {
       "issue": 11,
       "stable_id": "V2-11",
-      "state": "planned",
+      "state": "in_progress",
       "owner_role": "Knowledge/drafts",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
+      "owner": "g3_drafts",
+      "branch": "codex/v2-11-draft-sources",
+      "worktree_alias": "KnowPilot-V2-11",
+      "completed_nodes": [
+        "11.ready"
+      ],
       "prs": [],
       "head_sha": null,
       "merge_sha": null,
@@ -625,7 +665,16 @@
         "evidence": [],
         "reviewer": null
       },
-      "release_node": "11.released"
+      "release_node": "11.released",
+      "base_sha": "33d52b998423970a29871c273cabad05665e90f0",
+      "dispatch": {
+        "released_by": [
+          "G2.pass",
+          "9.released"
+        ],
+        "baseline_sha": "33d52b998423970a29871c273cabad05665e90f0",
+        "test_environment": "isolated SQLite v37 and localhost"
+      }
     },
     {
       "issue": 12,
@@ -672,7 +721,9 @@
         "13-B.5.post",
         "13-B.7.post",
         "13-B.8.pre",
-        "13-B.8.post"
+        "13-B.8.post",
+        "13-B.9.pre",
+        "13-B.9.post"
       ],
       "prs": [
         16
@@ -1171,6 +1222,44 @@
                   "total_assertions": 30
                 }
               }
+            },
+            "9": {
+              "pr": 30,
+              "pre": {
+                "status": "passed",
+                "pull_request_head": "b67781474b45e2cf6664dbe0b9dbdfb1dfb7a1d7",
+                "verified_release_tree_sha": "9799a96de1c388c15bb0d5ce084d3b4d31640d6f",
+                "commands_passed": 23,
+                "commands_total": 24,
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "passed",
+                "merge_sha": "33d52b998423970a29871c273cabad05665e90f0",
+                "merge_tree_sha": "9799a96de1c388c15bb0d5ce084d3b4d31640d6f",
+                "commands_passed": 23,
+                "commands_total": 24,
+                "evidence_hashes": {
+                  "review-results.json": "603a69e1fcb5038fc7ac2a5dc9d8fca91fae953d86e596c35bdb0f72c381d0ca",
+                  "targeted.json": "a25655f77d96cd39e834b1e1b6014c6ada7850fa25c95e0429f0d9000f48cfc3",
+                  "blockers.json": "49fc861a46e147dbd6689e7438d9a1d6a530fe218f2c3e902f583d4e8ade23d8"
+                },
+                "sqlite_recovery": "passed",
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30,
+                  "baseline_sha": "819315c7921796508d35e495cbc4af2b94786fe3"
+                }
+              }
             }
           }
         },
@@ -1181,5 +1270,5 @@
       }
     }
   ],
-  "development_baseline_sha": "026bf1dfa060aa359a5ed8e1b7d709494a13625e"
+  "development_baseline_sha": "33d52b998423970a29871c273cabad05665e90f0"
 }
