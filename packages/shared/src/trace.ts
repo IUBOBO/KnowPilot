@@ -122,8 +122,11 @@ export interface TraceCitationRef {
   id: string;
   chunkId: string | null;
   recordId: string | null;
-  /** 仅用于复核时按原版本回读台账记录。 */
+  /** Source identity and version for callers that reauthorize evidence before reading. */
+  documentId?: string;
+  recordType?: string;
   sourceVersion?: string;
+  recordFingerprint?: string;
 }
 
 /** Claim 级校验摘要。**不含 Claim 正文**。 */

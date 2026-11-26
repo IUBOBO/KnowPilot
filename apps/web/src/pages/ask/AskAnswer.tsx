@@ -9,6 +9,7 @@ import { ApiError, apiPost, isAbort, toApiError } from '../../api.ts';
 import { ErrorNotice } from '../../components/ErrorNotice.tsx';
 import { formatCnyFromUsd } from '../../currency.ts';
 import { FinalAnswerBody } from './AnswerMarkdown.tsx';
+import { AskNoteActions } from './AskNoteActions.tsx';
 import { renderAnswerCitations, type CitationOpenContext } from './AnswerSources.tsx';
 import { formatElapsed } from './AskProcess.tsx';
 
@@ -43,18 +44,21 @@ export function AskAnswer({
           追问按上文理解为：<b>{result.followUpRewrite.rewritten}</b>
         </p>
       )}
-      <FinalAnswerBody text={result.answer.answer} byId={byId} {...sources} />
-      {blocks ?? (result.answer.blocks !== undefined && (
-        <Suspense fallback={null}>
-          <AnswerBlocks response={result} {...(onOpenEvidence === undefined ? {} : { onOpenEvidence })}
-            {...(documentSearchHref === undefined ? {} : { documentSearchHref })} />
-        </Suspense>
-      ))}
+      <div className="ask-note-content">
+        <FinalAnswerBody text={result.answer.answer} byId={byId} {...sources} />
+        {blocks ?? (result.answer.blocks !== undefined && (
+          <Suspense fallback={null}>
+            <AnswerBlocks response={result} {...(onOpenEvidence === undefined ? {} : { onOpenEvidence })}
+              {...(documentSearchHref === undefined ? {} : { documentSearchHref })} />
+          </Suspense>
+        ))}
+      </div>
       {result.delivery.status === 'interrupted' && <p className="ask-answer-note">查询中断。可以继续查找。</p>}
       {result.delivery.status === 'partial' && result.answer.verification.counts.contradicted > 0 && (
         <p className="ask-answer-note">部分说法与资料不一致，请结合来源核对。</p>
       )}
       <p className="ask-answer-time">用时 {formatElapsed(result.answer.durationMs)}</p>
+      <AskNoteActions key={`note-${result.runId}`} result={result} />
       {/* 逐条要点可直达原文；这里仍保留汇总抽屉，用于核对全部来源。 */}
       {sourceCount > 0 ? (
         <div className="answer-tools ask-answer-toolbar" role="group" aria-label="回答工具">

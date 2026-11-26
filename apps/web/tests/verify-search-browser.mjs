@@ -505,6 +505,156 @@ try {
   assert.equal(await bodyPanel(withheld).count(), 0);
   assert.deepEqual(pageErrors, []);
   console.log('PASS narrow dialog and keyboard focus, live authorization on preview, signed-out route, recoverable error');
+
+  // Research notes use the same real search, ask, permission and evidence services.
+  const noteDocument = 'fixture-note-document';
+  const noteChunk = noteDocument + '-chunk';
+  const noteDocumentTitle = '研究笔记合成资料';
+  insertDocument.run(noteDocument, 'sop', noteDocumentTitle, 'ready', noteDocument, now.toISOString(), INDEX_VERSION);
+  const noteSourceText = exactQuote + ' 仅用于测试的研究笔记来源。';
+  insertChunk.run(noteChunk, noteDocument, 0, noteSourceText, segmentForIndex(noteSourceText), 1,
+    JSON.stringify(['合成章节']), noteSourceText.length);
+  const notePage = await makePage(browser, { width: 1440, height: 980 }, session().token);
+  notePage.on('pageerror', (error) => pageErrors.push(error));
+  await notePage.addInitScript(() => localStorage.setItem('knowpilot.ask.consent.v1', '1'));
+  await runSearch(notePage, marker, { documentId: noteDocument, kind: 'document' });
+  await bodyPanel(notePage).getByRole('checkbox', { name: '选择 ' + noteDocumentTitle }).check();
+  await notePage.getByRole('link', { name: '基于此资料问答' }).click();
+  const noteScope = notePage.getByRole('region', { name: '问答资料范围' });
+  await noteScope.getByText(noteDocumentTitle, { exact: true }).waitFor();
+
+  const askAnswer = notePage.getByRole('article', { name: '回答', exact: true });
+  const saveAsNote = askAnswer.getByRole('button', { name: '转为研究笔记', exact: true });
+  async function answerForNote(question) {
+    await notePage.locator('.ask-form input').fill(question);
+    const [received] = await Promise.all([
+      notePage.waitForResponse((r) => requestPath(r) === '/api/v1/ask/stream'),
+      notePage.locator('.ask-form button[type="submit"]').click(),
+    ]);
+    assert.equal(received.request().postDataJSON().history, undefined);
+    assert((await received.text()).includes(exactQuote));
+    await saveAsNote.waitFor();
+  }
+  const noteEditor = notePage.getByRole('region', { name: '编辑笔记' });
+  const noteBody = noteEditor.getByRole('textbox', { name: /^正文/u });
+  await answerForNote(marker);
+  const savedWithoutModel = modelCalls.length;
+  await saveAsNote.click();
+  await notePage.waitForURL('**/knowledge/notes?note=*');
+  const fullNoteUrl = notePage.url();
+  await noteBody.waitFor();
+  assert((await noteBody.inputValue()).includes(exactQuote));
+  assert.match(await noteBody.inputValue(), /关联证据 \[E1\]/u);
+  const sources = noteEditor.getByRole('region', { name: '关联问答与来源' });
+  const sourceControl = sources.getByRole('button', { name: new RegExp(noteDocumentTitle) });
+  await sourceControl.waitFor();
+  await sourceControl.click();
+  const noteReader = notePage.getByRole('complementary', { name: readerName });
+  await noteReader.getByText(noteSourceText, { exact: true }).waitFor();
+  const noteFileUrl = await noteReader.getByRole('link', { name: '下载原件', exact: true }).getAttribute('href');
+  assert.match(noteFileUrl, /^\/api\/v1\/research-notes\/.*\/sources\/E1\/file$/u);
+  await notePage.screenshot({ path: join(output, 'research-notes-reader.png') });
+  await notePage.keyboard.press('Escape');
+  await noteReader.waitFor({ state: 'hidden' });
+  assert.equal(await sourceControl.evaluate((button) => document.activeElement === button), true);
+  await noteEditor.getByLabel('标题').fill('合成笔记编辑后的标题');
+  await noteEditor.getByLabel('标签').fill('校准，回归');
+  await noteBody.fill('研究者编辑内容');
+  const saveNote = noteEditor.getByRole('button', { name: '保存笔记' });
+  await saveNote.focus();
+  await notePage.keyboard.press('Enter');
+  await noteEditor.getByRole('heading', { name: '合成笔记编辑后的标题' }).waitFor();
+  await noteEditor.getByText('笔记已保存。', { exact: true }).waitFor();
+  assert(await saveNote.evaluate((button) => button === document.activeElement));
+  await notePage.reload();
+  await noteBody.waitFor();
+  assert.equal(await noteBody.inputValue(), '研究者编辑内容');
+  const list = notePage.getByRole('region', { name: '我的笔记' });
+  await list.getByLabel('查找笔记').fill('回归');
+  await list.getByRole('button', { name: '查找' }).click();
+  await list.getByRole('link', { name: '合成笔记编辑后的标题' }).waitFor();
+
+  const beforeContinue = calls.length;
+  await noteEditor.getByRole('link', { name: /使用可用文档继续问答/ }).click();
+  await notePage.waitForURL('**/ask');
+  await noteScope.getByText(noteDocumentTitle, { exact: true }).waitFor();
+  assert.equal(await notePage.locator('.ask-form input').inputValue(), '合成笔记编辑后的标题');
+  assert(!calls.slice(beforeContinue).some(({ pathname }) => pathname === '/api/v1/ask/stream'));
+  assert.equal(modelCalls.length, savedWithoutModel);
+
+  await answerForNote('继续核实合成校准');
+  const secondRunModelCalls = modelCalls.length;
+  await askAnswer.locator('.ask-note-content').evaluate((element, quote) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      const index = node.textContent.indexOf(quote);
+      if (index === -1) continue;
+      const range = document.createRange();
+      range.setStart(node, index);
+      range.setEnd(node, index + quote.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return;
+    }
+    throw new Error('Could not select the synthetic answer excerpt');
+  }, exactQuote);
+  const saveExcerpt = askAnswer.getByRole('button', { name: '保存选段', exact: true });
+  await saveExcerpt.click();
+  await notePage.waitForURL('**/knowledge/notes?note=*');
+  await noteBody.waitFor();
+  assert.equal(await noteBody.inputValue(), exactQuote);
+  await sources.getByText(/答复选段/).waitFor();
+  await notePage.goto(origin + '/ask');
+  await askAnswer.getByRole('button', { name: '追加到已有笔记', exact: true }).click();
+  await list.getByRole('link', { name: '合成笔记编辑后的标题' }).click();
+  assert.equal(notePage.url(), fullNoteUrl);
+  await noteEditor.getByRole('button', { name: '追加到这条笔记' }).click();
+  await noteEditor.getByRole('button', { name: '保存笔记' }).click();
+  await sources.getByText(/继续核实合成校准/).waitFor();
+  assert.equal(await sources.getByText(/运行编号/).count(), 2);
+  assert((await noteBody.inputValue()).includes('研究者编辑内容'));
+  assert((await noteBody.inputValue()).includes(exactQuote));
+  assert.equal(modelCalls.length, secondRunModelCalls);
+
+  // Withdrawing the source after the note loads must still block a reader click.
+  db.prepare("UPDATE documents SET status = 'uploaded' WHERE id = ?").run(noteDocument);
+  const deniedFile = await notePage.request.get(origin + noteFileUrl);
+  assert.equal(deniedFile.status(), 404);
+  assert(!(await deniedFile.text()).includes(noteSourceText));
+  await sourceControl.first().click();
+  await noteReader.getByText(/此证据不可读取/).waitFor();
+  assert.equal(await noteReader.getByText(noteSourceText, { exact: true }).count(), 0);
+  await notePage.reload();
+  await sources.getByText(/来源不可读取，可能已失效或无访问权限/).first().waitFor();
+  assert.equal(await sourceControl.count(), 0);
+  await noteEditor.getByRole('link', { name: '打开检索选取研究资料' }).waitFor();
+  await notePage.setViewportSize({ width: 390, height: 844 });
+  await assertNoHorizontalOverflow(notePage);
+  await notePage.screenshot({ path: join(output, 'research-notes-narrow-unavailable.png') });
+  const beforeSearch = calls.length;
+  await noteEditor.getByRole('link', { name: '打开检索选取研究资料' }).click();
+  await notePage.waitForURL('**/search');
+  assert.equal(await notePage.getByRole('searchbox', { name: '关键词' }).inputValue(), '合成笔记编辑后的标题');
+  assert(!calls.slice(beforeSearch).some(({ pathname }) => ['/api/v1/ask/stream', '/api/v1/search', '/api/v1/quick-search'].includes(pathname)));
+  await notePage.setViewportSize({ width: 1440, height: 980 });
+  const replacementId = 'fixture-note-replacement';
+  const replacementTitle = '研究笔记替代资料';
+  const replacementTerm = 'replacementprobe';
+  const replacementText = exactQuote + ' ' + replacementTerm;
+  insertDocument.run(replacementId, 'sop', replacementTitle, 'ready', replacementId, now.toISOString(), INDEX_VERSION);
+  insertChunk.run(replacementId + '-chunk', replacementId, 0, replacementText, segmentForIndex(replacementText), 1,
+    '[]', replacementText.length);
+  await notePage.getByRole('searchbox', { name: '关键词' }).fill(replacementTerm);
+  await notePage.getByRole('button', { name: '搜索', exact: true }).click();
+  await bodyPanel(notePage).getByRole('link', { name: '仅检索此资料', exact: true }).click();
+  await notePage.getByRole('link', { name: '清除资料范围' }).click();
+  await bodyPanel(notePage).getByRole('checkbox', { name: '选择 ' + replacementTitle, exact: true }).check();
+  await notePage.getByRole('link', { name: '基于此资料问答', exact: true }).click();
+  await noteScope.getByText(replacementTitle, { exact: true }).waitFor();
+  await answerForNote('核对重新选择的合成资料');
+  assert.deepEqual(pageErrors, []);
+  console.log('PASS research-note full answer, excerpt, edit, search, multiple runs, live reader/withdrawal and no automatic model call');
 } catch (error) {
   console.error(error);
   process.exitCode = 1;

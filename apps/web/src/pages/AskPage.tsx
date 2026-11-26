@@ -19,6 +19,7 @@ import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { EvidenceViewer, useEvidenceViewer } from '../components/evidence/EvidenceViewer.tsx';
 import { answerEvidenceSources } from '../components/evidence/evidence-reader.ts';
 import { NavGlyph } from '../nav-icons.tsx';
+import { useAuth } from '../auth.tsx';
 import { historyForAsk, readAskSession, writeAskSession, type AskActivity, type AskTabTurn, type SearchContext } from '../ask-session.ts';
 import { AnswerBody } from './ask/AnswerMarkdown.tsx';
 import { AnswerSources, sourceHref } from './ask/AnswerSources.tsx';
@@ -61,10 +62,14 @@ export function AskPage({ active, scope, onActivity, slots }: {
   onActivity: (activity: AskActivity) => void;
   slots?: AskPageSlots;
 }) {
+  const { user } = useAuth();
   const [turns, setTurns] = useState(() => readAskSession(scope));
   const [consent, setConsent] = useState(() => localStorage.getItem(CONSENT_KEY) === '1');
   const [question, setQuestion] = useState('');
   const documentSelection = useAskDocumentScope(active, scope, setQuestion);
+  const researchThread = documentSelection.origin?.researchThread;
+  const relevantTurns = useMemo(() => researchThread === undefined ? turns
+    : turns.filter((turn) => turn.searchContext?.researchThread === researchThread), [turns, researchThread]);
   const [currentQuestion, setCurrentQuestion] = useState(() => turns.at(-1)?.question ?? '');
   const [result, setResult] = useState<AskResponse | null>(() => turns.at(-1)?.response ?? null);
   const [error, setError] = useState<ApiError | null>(null);
@@ -74,7 +79,8 @@ export function AskPage({ active, scope, onActivity, slots }: {
   const [progress, setProgress] = useState<string | null>(null);
   const restoredTurn = turns.at(-1);
   const lastRequest = useRef<{ question: string; context: readonly AskHistoryTurn[] } | null>(
-    restoredTurn === undefined ? null : { question: restoredTurn.question, context: historyForAsk(turns.slice(0, -1)) },
+    restoredTurn === undefined || (researchThread !== undefined && restoredTurn.searchContext?.researchThread !== researchThread)
+      ? null : { question: restoredTurn.question, context: historyForAsk(relevantTurns.slice(0, -1)) },
   );
   /** 证据池累计条数。用来说明"它真的在干活"，也是检索慢时唯一的变化 */
   const [evidenceTotal, setEvidenceTotal] = useState(0);
@@ -95,7 +101,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
   const sourceButtonRef = useRef<HTMLButtonElement>(null);
   /** 本次提问的原文；终态事件到达时用它追加一轮历史。`null` = 续跑，不追加。 */
   const questionRef = useRef<string | null>(null);
-  const searchContextRef = useRef<SearchContext | undefined>(undefined);
+  const searchContextRef = useRef(restoredTurn?.searchContext);
   const abortRef = useRef<AbortController | null>(null);
   /** 推荐问题点一下要落回输入框，所以输入框自己留一个 ref。 */
   const questionInputRef = useRef<HTMLInputElement>(null);
@@ -241,7 +247,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
       runStartedAtRef.current = performance.now();
       runEndedRef.current = false;
 
-      const context = [...(previousContext ?? historyForAsk(turns))].slice(-ASK_HISTORY_LIMIT);
+      const context = [...(previousContext ?? historyForAsk(relevantTurns))].slice(-ASK_HISTORY_LIMIT);
       lastRequest.current = { question: text, context };
       questionRef.current = text;
       searchContextRef.current = documentSelection.origin;
@@ -278,7 +284,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
         questionRef.current = null;
       }
     },
-    [documentSelection.ready, documentSelection.documentScope, documentSelection.origin, handleStreamEvent, onActivity, turns],
+    [documentSelection.ready, documentSelection.documentScope, documentSelection.origin, handleStreamEvent, onActivity, relevantTurns],
   );
 
   /**
@@ -364,7 +370,10 @@ export function AskPage({ active, scope, onActivity, slots }: {
 
   function retryLastRequest() {
     const request = lastRequest.current;
-    if (consent && documentSelection.ready && request !== null) void ask(request.question, request.context);
+    if (consent && documentSelection.ready && request !== null &&
+      (researchThread === undefined || searchContextRef.current?.researchThread === researchThread)) {
+      void ask(request.question, request.context);
+    }
   }
 
   function clearHistory() {
@@ -380,7 +389,9 @@ export function AskPage({ active, scope, onActivity, slots }: {
     setError(null);
     setStopped(false);
     setDrawerOpen(false);
-    lastRequest.current = { question: turn.question, context: historyForAsk(turns.slice(0, turns.indexOf(turn))) };
+    const match = relevantTurns.indexOf(turn);
+    searchContextRef.current = turn.searchContext;
+    lastRequest.current = match < 0 ? null : { question: turn.question, context: historyForAsk(relevantTurns.slice(0, match)) };
     currentQuestionRef.current?.focus({ preventScroll: true });
     currentQuestionRef.current?.scrollIntoView({ block: 'center' });
   }
@@ -388,10 +399,13 @@ export function AskPage({ active, scope, onActivity, slots }: {
   const latestTurn = turns.at(-1);
   const answerSearch = turns.find((turn) => turn.response.runId === result?.runId)?.searchContext
     ?? { query: result?.followUpRewrite?.rewritten ?? currentQuestion };
-  const isFollowUp = latestTurn !== undefined;
+  const isFollowUp = relevantTurns.length > 0;
   const resumedDocuments = result?.documentScope?.documents;
   const currentDocuments = documentSelection.documentScope?.documents;
-  const canResumeInScope = documentSelection.ready && (resumedDocuments === undefined
+  const canResumeInScope = documentSelection.ready &&
+    (researchThread === undefined || relevantTurns.some((turn) => turn.response.runId === result?.runId) ||
+      (result?.delivery.status === 'interrupted' && searchContextRef.current?.researchThread === researchThread)) &&
+    (resumedDocuments === undefined
     ? currentDocuments === undefined
     : resumedDocuments.length === currentDocuments?.length &&
       resumedDocuments.every((doc) => currentDocuments.some((item) => item.id === doc.id && item.version === doc.version)));
@@ -482,7 +496,10 @@ export function AskPage({ active, scope, onActivity, slots }: {
               </li>;
             })}
           </ul>}
-          <Link to={searchContextHref(documentSelection.origin ?? { query: '' })}>返回检索选资料</Link>{' '}
+          <Link to={searchContextHref(documentSelection.origin ?? { query: '' })}
+            state={researchThread === undefined || user === null ? undefined : {
+              ownerId: user.id, noteResearchTopic: documentSelection.origin?.query ?? '',
+            }}>返回检索选资料</Link>{' '}
           <button type="button" disabled={loading} onClick={documentSelection.clear}>改为全库检索</button>
         </section>
       )}

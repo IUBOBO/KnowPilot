@@ -132,7 +132,9 @@ function EvidenceContent({ evidence, readerSource, preview }: {
   }
   const { context, highlight, version } = evidence;
   const { document: source, chunk, siblings } = context;
-  const fileUrl = `/api/v1/documents/${encodeURIComponent(source.id)}/file`;
+  const fileUrl = readerSource.sourcePath === undefined ? `/api/v1/documents/${encodeURIComponent(source.id)}/file`
+    : readerSource.sourcePath + '/file';
+  const noteArchive = readerSource.sourcePath !== undefined && context.archivedIndexVersion !== undefined;
   const isPdf = source.fileName === null ? chunk.page !== null : /\.pdf$/iu.test(source.fileName);
   const pageLabel = chunk.page === null ? '无页码' : isPdf ? `PDF 物理页 ${chunk.page}` : `第 ${chunk.page} 页`;
   const canPreview = context.archivedIndexVersion === undefined && version === 'matched';
@@ -153,16 +155,17 @@ function EvidenceContent({ evidence, readerSource, preview }: {
       </button>
       {preview.view !== null && <PdfPreview fileUrl={fileUrl} citedPage={chunk.page} quote={documentPdfQuote(evidence, readerSource)}
         view={preview.view} onViewChange={preview.onViewChange} />}
-    </> : <p className="dim">此引用无法核对当前 PDF 的页码。可查看保留片段或下载原件。</p>)}
+    </> : <p className="dim">{noteArchive ? '此历史引用仅保留原文片段。'
+      : '此引用无法核对当前 PDF 的页码。可查看保留片段或下载原件。'}</p>)}
     {highlight === null && <p className="dim">未能精确定位摘录，已显示授权原文片段。</p>}
     <p className="evidence-reader-excerpt">{excerpt}</p>
     {context.archivedIndexVersion === undefined && siblings.length > 1 && <details>
       <summary>同页上下文</summary>
       {siblings.map((item) => <p className="evidence-reader-excerpt" key={item.id}>{item.text}</p>)}
     </details>}
-    <a href={fileUrl} className="link-btn">
+    {!noteArchive && <a href={fileUrl} className="link-btn">
       {context.archivedIndexVersion === undefined ? '下载原件' : '下载当前原件'}
-    </a>
+    </a>}
   </>;
 }
 

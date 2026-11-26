@@ -98,6 +98,7 @@ import { suggestNextActions } from './next-actions.ts';
 import { resolveRecordEvidence } from './evidence-restore.ts';
 import { DEFAULT_CHAT_MODEL, DEEPSEEK, resolveRuntimeModel } from './models.ts';
 import { buildSystemPrompt, NO_EVIDENCE_PHRASE, promptHashOf } from './prompt.ts';
+import { recordContentFingerprint, recordDependsOnLinkedFields } from '../retrieval/records.ts';
 import { insertAskRecord } from './records.ts';
 import { insertUsageEvent, type UsagePurpose } from '../usage/repo.ts';
 import { createStreamFn } from './stream.ts';
@@ -229,7 +230,7 @@ export interface AskFinalization {
    */
   recordEvidence: readonly { recordType: string; recordId: string }[];
   /** 正文真正引用到的证据。文档回 `chunkId`，记录回 `recordId`。失败时可能为空。 */
-  citationMap: readonly { id: string; chunkId: string | null; recordId: string | null; sourceVersion?: string }[];
+  citationMap: readonly import('@knowpilot/shared').TraceCitationRef[];
   /**
    * 停止时证据池里已有多少条。
    *
@@ -1692,9 +1693,14 @@ export async function runAsk(
       retrievalHits,
       recordEvidence,
       citationMap: (entry.citations ?? []).map((c) => {
-        if (c.sourceType === 'document') return { id: c.id, chunkId: c.chunkId, recordId: null };
         const sourceVersion = validById.get(c.id)?.sourceVersion;
-        return { id: c.id, chunkId: null, recordId: c.recordId, ...(sourceVersion === undefined ? {} : { sourceVersion }) };
+        const version = sourceVersion === undefined ? {} : { sourceVersion };
+        if (c.sourceType === 'document') {
+          return { id: c.id, chunkId: c.chunkId, documentId: c.documentId, recordId: null, ...version };
+        }
+        const fingerprint = recordDependsOnLinkedFields(c.recordType) || c.recordType === 'M-JOURNAL'
+          ? { recordFingerprint: recordContentFingerprint(c.recordTitle, c.fields) } : {};
+        return { id: c.id, chunkId: null, recordId: c.recordId, recordType: c.recordType, ...version, ...fingerprint };
       }),
       claimChecks: (entry.verification?.claims ?? []).map((c) => ({
         claimId: c.claimId,

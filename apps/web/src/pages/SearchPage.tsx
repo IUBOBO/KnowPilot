@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
   MATERIALS, MATERIAL_LABELS, QUICK_SEARCH_KINDS, QUICK_SEARCH_LABELS,
   type EvidenceOpenRequest, type OpenEvidence, type QuickSearchHit, type QuickSearchKind,
@@ -44,6 +44,11 @@ function recordRequest(hit: QuickSearchHit): EvidenceOpenRequest | undefined {
   return { version: 1, locator: { kind: 'record', recordType, recordId: hit.id, sourceVersion: hit.updatedAt } };
 }
 
+interface NoteSearchState {
+  ownerId: string;
+  noteResearchTopic: string;
+}
+
 interface SearchResults {
   records: QuickSearchResponse['items'];
   body: RetrievalResponseV1 | null;
@@ -53,6 +58,10 @@ interface SearchResults {
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
   const { can, user } = useAuth();
+  const { state } = useLocation();
+  const noteSearch: NoteSearchState | undefined =
+    user !== null && state?.ownerId === user.id && typeof state?.noteResearchTopic === 'string'
+      ? { ownerId: user.id, noteResearchTopic: state.noteResearchTopic.slice(0, 100) } : undefined;
   const kind = QUICK_SEARCH_KINDS.find((item) => item === params.get('kind')) ?? 'all';
   const allowDocumentScope = kind === 'all' || kind === 'document';
   const rawMaterial = allowDocumentScope ? params.get('material') : null;
@@ -71,7 +80,7 @@ export function SearchPage() {
           {invalidMaterial && '资料类型无效。'}
           {invalidDocumentId && '资料 ID 无效。'}
         </p>
-        <Link to={{ search: corrected.toString() }}>清除无效筛选</Link>
+        <Link to={{ search: corrected.toString() }} state={noteSearch}>清除无效筛选</Link>
       </div>
     </>;
   }
@@ -83,14 +92,16 @@ export function SearchPage() {
   };
   const allowDocuments = can('knowledge.read');
   const allowAsk = can('chat.use');
-  const scopeKey = JSON.stringify([user?.id, user?.role, allowDocuments, allowAsk, scope]);
-  return <SearchSession key={scopeKey} scope={scope} allowDocuments={allowDocuments} allowAsk={allowAsk} onSearch={setParams} />;
+  const scopeKey = JSON.stringify([user?.id, user?.role, allowDocuments, allowAsk, scope, noteSearch?.noteResearchTopic]);
+  return <SearchSession key={scopeKey} scope={scope} allowDocuments={allowDocuments} allowAsk={allowAsk}
+    noteSearch={noteSearch} onSearch={(next) => setParams(next, noteSearch === undefined ? undefined : { state: noteSearch })} />;
 }
 
-function SearchSession({ scope, allowDocuments, allowAsk, onSearch }: {
+function SearchSession({ scope, allowDocuments, allowAsk, noteSearch, onSearch }: {
   scope: SearchScope;
   allowDocuments: boolean;
   allowAsk: boolean;
+  noteSearch: NoteSearchState | undefined;
   onSearch: (params: URLSearchParams) => void;
 }) {
   const { kind, query, material, documentId } = scope;
@@ -180,7 +191,7 @@ function SearchSession({ scope, allowDocuments, allowAsk, onSearch }: {
         <form className="form-row search-query-form" onSubmit={search}>
           <label className="field search-field-query">
             <span>关键词</span>
-            <input name="q" type="search" defaultValue={query} maxLength={100}
+            <input name="q" type="search" defaultValue={query || noteSearch?.noteResearchTopic || ''} maxLength={100}
               placeholder="输入标题、关键词、编号或自然语言问题" />
           </label>
           <label className="field"><span>范围</span>
@@ -202,7 +213,7 @@ function SearchSession({ scope, allowDocuments, allowAsk, onSearch }: {
         </form>
         {documentId !== undefined && allowDocuments && <div className="search-scope">
           <span>{documentScopeTitle === undefined ? '已限定为一份资料' : `仅检索《${documentScopeTitle}》`}</span>
-          <Link to={documentScopeHref(undefined)}>清除资料范围</Link>
+          <Link to={documentScopeHref(undefined)} state={noteSearch}>清除资料范围</Link>
         </div>}
       </div>
       {bodyOnly && <p role="status" className="dim">当前账号没有文档检索权限。</p>}
@@ -216,11 +227,13 @@ function SearchSession({ scope, allowDocuments, allowAsk, onSearch }: {
       {selected.size > 0 && <div className="search-selection">
         <strong role="status">已选 {selected.size} 份资料</strong>
         <button type="button" onClick={() => setSelected(new Set())}>清空选择</button>
-        {allowAsk && <Link className="search-ask-link" to="/ask" state={searchAskHandoff(scope, selected)}>基于此资料问答</Link>}
+        {allowAsk && <Link className="search-ask-link" to="/ask" state={{
+          ...searchAskHandoff(scope, selected), ...(noteSearch === undefined ? {} : { noteResearch: true }),
+        }}>基于此资料问答</Link>}
       </div>}
       {results?.body && <SearchDocuments
         passages={passages} selected={selected} onToggle={toggleDocument} onOpen={evidence.onOpenEvidence}
-        scopedSearch={documentId === undefined ? documentScopeHref : undefined}
+        scopedSearch={documentId === undefined ? documentScopeHref : undefined} scopeState={noteSearch}
       />}
       {quickEmpty && <p className="dim" role="status">{kind === 'document' ? '未找到匹配的资料标题。' : '未找到匹配的标题或台账。'}</p>}
       {titleHits.length > 0 && <QuickResults

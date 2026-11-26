@@ -21,7 +21,10 @@ function readSelection(account: string): Selection {
     const pinned = parseAskDocumentScope(saved.selection.pinned);
     if (ids === undefined || origin === undefined || (saved.selection.pinned !== undefined &&
       (pinned === undefined || pinned.documents.some((ref) => !ids.includes(ref.id))))) return { kind: 'invalid' };
-    return { kind: 'selected', ids, origin, ...(pinned === undefined ? {} : { pinned }) };
+    const researchThread: unknown = saved.selection.origin?.researchThread;
+    return { kind: 'selected', ids, origin: { ...origin,
+      ...(typeof researchThread === 'string' && researchThread.length <= 80 ? { researchThread } : {}),
+    }, ...(pinned === undefined ? {} : { pinned }) };
   } catch {
     return { kind: 'invalid' };
   }
@@ -42,13 +45,13 @@ export function useAskDocumentScope(active: boolean, account: string, onQuery: (
   const [selection, setSelection] = useState(() => readSelection(account));
   const [lookup, setLookup] = useState<{ ids: readonly string[]; items: readonly AskScopeDocument[] | null }>();
   const ids = selection.kind === 'selected' ? selection.ids : undefined;
-  const state = location.state as { searchHandoff?: unknown } | null;
+  const state = location.state as { searchHandoff?: unknown; noteResearch?: unknown } | null;
   const handoff = state?.searchHandoff;
   const incoming = active && handoff !== undefined && handled.current !== location.key;
   useEffect(() => {
     if (!incoming) return;
     handled.current = location.key;
-    const { searchHandoff: _handoff, ...remaining } = state ?? {};
+    const { searchHandoff: _handoff, noteResearch, ...remaining } = state ?? {};
     void navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, state: remaining });
     const parsed = parseSearchAskHandoff(handoff);
     if (parsed === undefined) {
@@ -56,7 +59,9 @@ export function useAskDocumentScope(active: boolean, account: string, onQuery: (
       return;
     }
     const { documentIds, version: _version, ...origin } = parsed;
-    setSelection({ kind: 'selected', ids: documentIds, origin });
+    setSelection({ kind: 'selected', ids: documentIds, origin: { ...origin,
+      ...(noteResearch === true ? { researchThread: location.key } : {}),
+    } });
     onQuery(origin.query);
   }, [handoff, incoming, location.key, location.pathname, location.search, location.hash, navigate, onQuery, state]);
 

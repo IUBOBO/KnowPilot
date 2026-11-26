@@ -444,7 +444,7 @@ export function Layout() {
    * 只比相等会让子页面上右栏忽然冒出来 —— 那种"点进去就变样"是最难查的界面回归。
    */
   const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
-  const showRail = !isAdminPath;
+  const showRail = !isAdminPath && pathname !== '/knowledge/notes';
   const railTitle = can('ledger.deletions.read') ? '最近消息' : '最近入库';
   const [railOpen, setRailOpen] = useState(false);
   const railToggleRef = useRef<HTMLButtonElement>(null);
@@ -454,6 +454,7 @@ export function Layout() {
   };
   const currentPage = pathname === '/'
     ? '今天的工作台'
+    : pathname === '/knowledge/notes' ? '研究笔记'
     : pathname.startsWith('/chunk/')
       ? '原文片段'
     : pathname.startsWith('/admin/traces/')

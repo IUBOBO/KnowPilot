@@ -10,7 +10,10 @@ import {
 const SESSION_KEY = 'knowpilot.ask.tab.v1';
 
 export const ASK_SCOPE_SESSION_KEY = 'knowpilot.ask.document-scope.v1';
-export type SearchContext = Pick<SearchAskHandoffV1, 'query' | 'kind' | 'material' | 'documentId'>;
+export type SearchContext = Pick<SearchAskHandoffV1, 'query' | 'kind' | 'material' | 'documentId'> & {
+  /** Scope conversation context for a note handoff without replacing tab history. */
+  researchThread?: string;
+};
 export type AskActivity = 'idle' | 'running' | 'answered' | 'failed';
 export interface AskTabTurn {
   question: string;

@@ -15,6 +15,8 @@ import { apiGet } from '../../api.ts';
 interface EvidenceReaderSource {
   request: EvidenceOpenRequest;
   recordHref?: string;
+  sourcePath?: string;
+  requireMatchingVersion?: boolean;
   /** Only server-issued text, matched verbatim against the fresh source, can produce a mark. */
   quote?: string;
 }
@@ -74,14 +76,17 @@ function compareVersion(expected: string, current: string | undefined): SourceVe
   return current === expected ? 'matched' : 'changed';
 }
 
-function loadDocument(locator: DocumentEvidenceLocator, quote?: string, signal?: AbortSignal): Promise<LoadedEvidence> {
-  return apiGet<ChunkContextResponse>(`/api/v1/chunks/${encodeURIComponent(locator.chunkId)}`, signal, { noAuthRedirect: true, cache: 'no-store' })
+function loadDocument(locator: DocumentEvidenceLocator, source: EvidenceReaderSource, signal: AbortSignal): Promise<LoadedEvidence> {
+  const path = source.sourcePath ?? `/api/v1/chunks/${encodeURIComponent(locator.chunkId)}`;
+  const { quote } = source;
+  return apiGet<ChunkContextResponse>(path, signal, { noAuthRedirect: true, cache: 'no-store' })
     .then((context) => {
       if (context.document.id !== locator.documentId || context.chunk.id !== locator.chunkId) {
         return { kind: 'unavailable' };
       }
       const currentVersion = context.sourceVersion ?? context.archivedIndexVersion?.toString();
       const version = compareVersion(locator.sourceVersion, currentVersion);
+      if (source.requireMatchingVersion && version !== 'matched') return { kind: 'unavailable' };
       const text = context.chunk.text;
       const start = version === 'matched' && quote?.trim() ? text.indexOf(quote) : -1;
       const highlight = quote !== undefined && start >= 0 && text.indexOf(quote, start + 1) === -1
@@ -94,11 +99,11 @@ function loadDocument(locator: DocumentEvidenceLocator, quote?: string, signal?:
 export async function loadEvidence(source: EvidenceReaderSource, signal: AbortSignal): Promise<LoadedEvidence> {
   const { locator } = source.request;
   try {
-    if (locator.kind === 'document') return await loadDocument(locator, source.quote, signal);
+    if (locator.kind === 'document') return await loadDocument(locator, source, signal);
     if (!supportsEvidence(source.request)) return { kind: 'unavailable' };
 
     const opts = { noAuthRedirect: true, cache: 'no-store' } as const;
-    const exactPath = exactRecordPath(locator);
+    const exactPath = source.sourcePath ?? exactRecordPath(locator);
     let hit;
     if (exactPath !== undefined) {
       hit = await apiGet<RecordRetrievalHit>(exactPath, signal, opts);
@@ -112,7 +117,7 @@ export async function loadEvidence(source: EvidenceReaderSource, signal: AbortSi
       return { kind: 'unavailable' };
     }
     const version = compareVersion(locator.sourceVersion, hit.sourceVersion);
-    if (hit.recordType === 'M-JOURNAL' && version !== 'matched') return { kind: 'unavailable' };
+    if ((source.requireMatchingVersion || hit.recordType === 'M-JOURNAL') && version !== 'matched') return { kind: 'unavailable' };
     return { kind: 'record', hit, version };
   } catch {
     // Neither a revoked source nor an unresolvable historical locator should fall back to cached excerpts.
