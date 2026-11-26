@@ -52,15 +52,35 @@ interface SearchResults {
 
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
+  const { can, user } = useAuth();
   const kind = QUICK_SEARCH_KINDS.find((item) => item === params.get('kind')) ?? 'all';
   const allowDocumentScope = kind === 'all' || kind === 'document';
+  const rawMaterial = allowDocumentScope ? params.get('material') : null;
+  const material = MATERIALS.find((item) => item === rawMaterial);
+  const documentId = allowDocumentScope ? params.get('documentId') : null;
+  const invalidMaterial = Boolean(rawMaterial) && material === undefined;
+  const invalidDocumentId = documentId === '';
+  if (invalidMaterial || invalidDocumentId) {
+    const corrected = new URLSearchParams(params);
+    if (invalidMaterial) corrected.delete('material');
+    if (invalidDocumentId) corrected.delete('documentId');
+    return <>
+      <div className="page-head"><PageTitle icon="search">统一检索</PageTitle></div>
+      <div className="card">
+        <p className="search-error" role="alert">
+          {invalidMaterial && '资料类型无效。'}
+          {invalidDocumentId && '资料 ID 无效。'}
+        </p>
+        <Link to={{ search: corrected.toString() }}>清除无效筛选</Link>
+      </div>
+    </>;
+  }
   const scope: SearchScope = {
     query: params.get('q')?.trim() ?? '',
     kind,
-    material: allowDocumentScope ? MATERIALS.find((item) => item === params.get('material')) : undefined,
-    documentId: allowDocumentScope ? params.get('documentId') || undefined : undefined,
+    material,
+    documentId: documentId ?? undefined,
   };
-  const { can, user } = useAuth();
   const allowDocuments = can('knowledge.read');
   const allowAsk = can('chat.use');
   const scopeKey = JSON.stringify([user?.id, user?.role, allowDocuments, allowAsk, scope]);

@@ -218,6 +218,30 @@ try {
   assert.equal(await quickLink.getAttribute('href'), '/docs?material=sop&focus=title-only');
   console.log('PASS natural question without a model, material and document scope, empty state, legacy title-link fallback');
 
+  for (const { invalid, retained, message, count } of [
+    { invalid: { material: 'invalid-fixture-type' }, retained: { documentId: 'search-doc-1' },
+      message: '资料类型无效', count: '1 份资料，4 个片段' },
+    { invalid: { documentId: '' }, retained: { material: 'sop' },
+      message: '资料 ID 无效', count: '7 份资料，28 个片段' },
+  ]) {
+    const query = new URLSearchParams({ q: marker, ...retained, ...invalid });
+    assert.equal((await desktop.request.get(`${origin}/api/v1/search?contractVersion=1&${query}`)).status(), 400);
+    assert.equal((await desktop.request.get(`${origin}/api/v1/quick-search?${query}`)).status(), 400);
+    const start = calls.length;
+    await desktop.goto(queryUrl(marker, { ...retained, ...invalid }));
+    await desktop.getByRole('alert').filter({ hasText: message }).waitFor();
+    assert.equal(await panel.count(), 0);
+    assert(!calls.slice(start).some(({ pathname }) => ['/api/v1/search', '/api/v1/quick-search'].includes(pathname)));
+    if ('material' in invalid) await desktop.screenshot({ path: join(output, 'invalid-scope.png') });
+
+    const response = desktop.waitForResponse(isBodySearch);
+    await desktop.getByRole('link', { name: '清除无效筛选', exact: true }).click();
+    assert.equal((await (await response).json()).scope[Object.keys(retained)[0]], Object.values(retained)[0]);
+    await panel.getByText(count, { exact: true }).waitFor();
+    assert.deepEqual(Object.fromEntries(new URL(desktop.url()).searchParams), { q: marker, ...retained });
+  }
+  console.log('PASS invalid explicit URL scope blocks both searches until cleared and retains valid filters');
+
   const mobileSession = session();
   const mobile = await makePage(browser, { width: 390, height: 844 }, mobileSession.token);
   await runSearch(mobile, marker, { material: 'sop' });
