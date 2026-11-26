@@ -57,6 +57,9 @@ import {
   ASK_HISTORY_ANSWER_CHARS,
   ASK_HISTORY_LIMIT,
   ASK_HISTORY_QUESTION_CHARS,
+  parseAskDocumentIds,
+  parseAskDocumentScope,
+  type AskDocumentScopeV1,
   type AskHistoryTurn,
   type AskOutcome,
   type AskResponse,
@@ -228,6 +231,7 @@ import {
   type AskFinalization,
   type AskResumeState,
 } from './agent/ask-run.ts';
+import { resolveAskScopeDocuments } from './agent/document-scope.ts';
 import { listAskRecords, listAskRecordsByUser } from './agent/records.ts';
 import { withAskRecordSources } from './agent/record-sources.ts';
 import { ASK_REVIEW_MAX_CHARS, reviewAnswer } from './agent/answer-review.ts';
@@ -1331,8 +1335,17 @@ export function createApp(deps: AppDeps): Hono<Env> {
     };
   }
 
+  app.post('/api/v1/ask/document-scope', async (c) => {
+    const value = await readJsonBody(c);
+    const body = typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
+    const ids = body.version === 1 ? parseAskDocumentIds(body.documentIds) : undefined;
+    if (ids === undefined) throw new AppError('invalid_argument', '资料选择格式无效。');
+    c.header('Cache-Control', 'private, no-store');
+    return c.json({ items: resolveAskScopeDocuments(deps.db, c.get('user'), ids) });
+  });
+
   app.post('/api/v1/ask', async (c) => {
-    const { question, history } = await readAskBody(c);
+    const { question, history, documentScope } = await readAskBody(c);
     const askedAt = new Date().toISOString();
 
     const result = await runAsk(
@@ -1340,6 +1353,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
       {
         question,
         history,
+        ...(documentScope === undefined ? {} : { documentScope }),
         consentConfirmed: true,
         requestId: c.get('requestId'),
         user: c.get('user'),
@@ -1364,7 +1378,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     // 请求体校验必须在进入流之前完成。一旦 streamSSE 返回，响应头就已经是
     // 200 + text/event-stream 了，那时再发现参数不对也改不了状态码 ——
     // 只能变成一个"先 200 再在流里报参数错"的怪东西。
-    const { question, history } = await readAskBody(c);
+    const { question, history, documentScope } = await readAskBody(c);
 
     return streamSSE(c, async (stream) => {
       const requestId = c.get('requestId');
@@ -1401,7 +1415,8 @@ export function createApp(deps: AppDeps): Hono<Env> {
       try {
         const response = await runAsk(
           { db: deps.db, config: deps.config, models: deps.models },
-          { question, history, consentConfirmed: true, requestId, user: c.get('user') },
+          { question, history, ...(documentScope === undefined ? {} : { documentScope }),
+            consentConfirmed: true, requestId, user: c.get('user') },
           {
             onEvent: send,
             signal: ac.signal,
@@ -1546,6 +1561,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     }
     const parsed = parseCheckpoint(checkpoint);
     const resume: AskResumeState = {
+      ...(parsed.plan.documentScope === undefined ? {} : { documentScope: parsed.plan.documentScope }),
       coverage: parsed.plan.coverage,
       coverageRatio: parsed.plan.coverageRatio,
       subgoals: parsed.plan.subgoals,
@@ -4193,6 +4209,7 @@ function parseAskHistory(raw: unknown): readonly AskHistoryTurn[] {
 async function readAskBody(c: Context<Env>): Promise<{
   question: string;
   history: readonly AskHistoryTurn[];
+  documentScope?: AskDocumentScopeV1;
 }> {
   const raw = await readJsonBody(c);
 
@@ -4217,7 +4234,13 @@ async function readAskBody(c: Context<Env>): Promise<{
     );
   }
 
-  return { question, history: parseAskHistory(body['history']) };
+  const rawScope = body['documentScope'];
+  const documentScope = parseAskDocumentScope(rawScope);
+  if (rawScope !== undefined && documentScope === undefined) {
+    throw new AppError('invalid_argument', '问答资料范围格式无效，请重新选择。');
+  }
+  return { question, history: parseAskHistory(body['history']),
+    ...(documentScope === undefined ? {} : { documentScope }) };
 }
 
 /** 一轮整理对话最多带多少条记录。超了说明客户端在灌数据，不是正常对话。 */

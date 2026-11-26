@@ -216,9 +216,7 @@ function SearchSession({ scope, allowDocuments, allowAsk, onSearch }: {
       {selected.size > 0 && <div className="search-selection">
         <strong role="status">已选 {selected.size} 份资料</strong>
         <button type="button" onClick={() => setSelected(new Set())}>清空选择</button>
-        {allowAsk && <Link className="search-ask-link" to="/ask" state={searchAskHandoff(scope, selected)}
-          aria-describedby="search-ask-note">基于此资料问答</Link>}
-        {allowAsk && <span className="dim" id="search-ask-note">前往问答页。当前提问仍需手动指定资料。</span>}
+        {allowAsk && <Link className="search-ask-link" to="/ask" state={searchAskHandoff(scope, selected)}>基于此资料问答</Link>}
       </div>}
       {results?.body && <SearchDocuments
         passages={passages} selected={selected} onToggle={toggleDocument} onOpen={evidence.onOpenEvidence}
@@ -260,6 +258,7 @@ function QuickResults({ kind, hits, atLimit, onOpen, selection }: {
 }
 
 /** Navigation intent for #8. The recipient must validate IDs and authorize their use. */
-function searchAskHandoff({ query, material, documentId }: DocumentSearchScope, selected: ReadonlySet<string>) {
-  return { searchHandoff: { version: 1, query, documentIds: [...selected], material, documentId } };
+function searchAskHandoff({ query, kind, material, documentId }: SearchScope, selected: ReadonlySet<string>) {
+  return { searchHandoff: { version: 1, query, documentIds: [...selected],
+    ...(kind === 'document' ? { kind } : {}), material, documentId } };
 }

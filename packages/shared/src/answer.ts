@@ -351,6 +351,7 @@ export interface FollowUpRewrite {
 }
 
 export interface AskRequest {
+  documentScope?: import('./ask-document-scope.ts').AskDocumentScopeV1;
   question: string;
   /**
    * 用户已勾选「我知道提问内容会发往云端模型」。
@@ -401,6 +402,8 @@ export interface AskNextAction {
 }
 
 export interface AskResponse {
+  /** Versioned selection for resuming this attempt with the original scope. */
+  documentScope?: import('./ask-document-scope.ts').AskDocumentScopeV1;
   /** Optional attempt-local process data. Older stored answers omit it. */
   process?: AskProcessV1;
   /** 本次运行的 id，与日志里的 run_id 一致，便于用户报障时定位 */

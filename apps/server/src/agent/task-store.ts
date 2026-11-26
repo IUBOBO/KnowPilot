@@ -72,6 +72,7 @@ export interface CheckpointSubgoal {
 }
 
 export interface TaskCheckpointData {
+  documentScope?: import('@knowpilot/shared').AskDocumentScopeV1;
   coverage: string;
   coverageRatio: number;
   subgoals: readonly CheckpointSubgoal[];
@@ -202,6 +203,7 @@ export function parseCheckpoint(row: CheckpointRow): {
     coverage: string;
     coverageRatio: number;
     subgoals: readonly CheckpointSubgoal[];
+    documentScope?: TaskCheckpointData['documentScope'];
   };
   evidence: { documents: readonly CheckpointDocumentRef[]; records: readonly CheckpointRecordRef[] };
   pendingStepIds: readonly string[];
@@ -216,6 +218,7 @@ export function parseCheckpoint(row: CheckpointRow): {
       coverage: string;
       coverageRatio: number;
       subgoals: readonly CheckpointSubgoal[];
+      documentScope?: TaskCheckpointData['documentScope'];
     },
     evidence: JSON.parse(row.evidence_json) as {
       documents: readonly CheckpointDocumentRef[];
@@ -265,6 +268,7 @@ export function commitCheckpoint(
         coverage: input.data.coverage,
         coverageRatio: input.data.coverageRatio,
         subgoals: input.data.subgoals,
+        ...(input.data.documentScope === undefined ? {} : { documentScope: input.data.documentScope }),
       }),
       JSON.stringify({ documents: input.data.documents, records: input.data.records }),
       JSON.stringify(input.data.pendingStepIds),

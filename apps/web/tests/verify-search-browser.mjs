@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { serve } from '@hono/node-server';
+import { createAssistantMessageEventStream } from '@earendil-works/pi-ai';
 import { INDEX_VERSION, SEARCH_MAX_LIMIT, segmentForIndex } from '@knowpilot/shared';
 import { preview } from 'vite';
 import { createLabModels } from '../../server/src/agent/models.ts';
@@ -28,7 +29,7 @@ await mkdir(output, { recursive: true });
 const config = {
   ...loadConfig(), repoRoot: temp, dbPath: ':memory:', uploadDir: join(temp, 'uploads'),
   dataRoot: join(temp, 'data'), codeRoots: [join(temp, 'data')], hfHome: join(temp, 'hf'),
-  embedModelDir: join(temp, 'no-model'), deepseekApiKey: undefined, modelBaseUrl: undefined,
+  embedModelDir: join(temp, 'no-model'), deepseekApiKey: 'fixture-only-no-network', modelBaseUrl: undefined,
   ocrEnabled: false, rerankEnabled: false, rewriteEnabled: false, cookieSecure: false,
 };
 const { db, migration } = openDb(':memory:');
@@ -61,7 +62,44 @@ const userId = await insertUser(db, username, {
   displayName: '检索合成账号', role: 'member', password: 'fixture-only-not-a-real-password',
 }, now);
 const session = () => createSession(db, { userId, now, idleDays: 1, maxDays: 1, ip: null, userAgent: null });
-const api = createApp({ db, config, schemaVersion: migration.toVersion, startedAt: Date.now(), models: createLabModels() });
+// Both model entry points are replaced. All search, scope, auth, and ask routes are real.
+const models = createLabModels();
+const modelCalls = [];
+const exactQuote = `Check ${marker} optical drift.`;
+let toolSequence = 0;
+let onGenerate;
+let forcePartial = false;
+function assistant(model, content, stopReason) {
+  return { role: 'assistant', content, stopReason, api: model.api, provider: model.provider, model: model.id,
+    usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, timestamp: Date.now() };
+}
+models.completeSimple = async (model, context) => {
+  modelCalls.push({ kind: 'rewrite', context });
+  return assistant(model, [{ type: 'text', text: marker }], 'stop');
+};
+models.streamSimple = (model, context) => {
+  modelCalls.push({ kind: 'generate', context });
+  const contextText = context.messages.flatMap(({ content }) =>
+    typeof content === 'string' ? [content] : content.filter((part) => part.type === 'text').map((part) => part.text),
+  ).join('\n');
+  const id = contextText.match(/\[(E\d+)\] [^\n]*\n来源版本/u)?.[1];
+  const hasRetrieved = context.messages.some((message) => message.role === 'toolResult');
+  const options = id === undefined && !hasRetrieved
+    ? { name: 'retrieve', arguments: { query: marker, mode: 'keyword' } }
+    : { name: 'submit_answer', arguments: {
+      answer: id === undefined ? '未找到合成依据。' : `${exactQuote} [${id}]`,
+      quotes: id === undefined ? [] : [{ evidence_id: id, quote: exactQuote }],
+      evidence_gaps: id === undefined || forcePartial ? ['没有找到完整依据'] : [], limits: [], confidence_notes: [], conflicts: [],
+      ...(id === undefined ? {} : { blocks: [{ kind: 'documents', evidence_ids: [id] }] }),
+    } };
+  if (options.name === 'submit_answer') onGenerate?.();
+  const msg = assistant(model, [{ type: 'toolCall', id: `scope-${++toolSequence}`, ...options }], 'toolUse');
+  const stream = createAssistantMessageEventStream();
+  queueMicrotask(() => stream.push({ type: 'done', reason: 'toolUse', message: msg }));
+  return stream;
+};
+const api = createApp({ db, config, schemaVersion: migration.toVersion, startedAt: Date.now(), models });
 const server = serve({ fetch: api.fetch, hostname: '127.0.0.1', port: apiPort });
 
 const calls = [];
@@ -91,7 +129,7 @@ async function makePage(browser, viewport, token) {
   if (token !== undefined) await page.context().addCookies([
     { name: SESSION_COOKIE, value: token, url: origin, httpOnly: true },
   ]);
-  page.on('request', (request) => calls.push({ method: request.method(), pathname: requestPath(request) }));
+  page.on('request', (request) => calls.push({ method: request.method(), pathname: requestPath(request), body: request.postData() }));
   return page;
 }
 async function runSearch(page, query, extra) {
@@ -114,6 +152,7 @@ try {
   const desktop = await makePage(browser, { width: 1450, height: 940 }, member.token);
   const pageErrors = [];
   desktop.on('pageerror', (error) => pageErrors.push(error));
+  await desktop.addInitScript(() => localStorage.setItem('knowpilot.ask.consent.v1', '1'));
   const sample = await runSearch(desktop, marker);
   assert.equal(sample.strategy, 'keyword');
   assert.equal(sample.hits.length, SEARCH_MAX_LIMIT);
@@ -178,10 +217,108 @@ try {
   assert.equal(calls.filter((call) => call.pathname === '/api/v1/search').length, 1);
   await desktop.getByRole('link', { name: '基于此资料问答', exact: true }).click();
   await desktop.waitForURL('**/ask');
-  assert.deepEqual(await desktop.evaluate(() => history.state.usr.searchHandoff), {
-    version: 1, query: marker, documentIds: [firstId, lastId], material: undefined, documentId: undefined,
+  const selection = desktop.getByRole('region', { name: '问答资料范围' });
+  const docNames = new Map(documents);
+  await selection.getByText(docNames.get(firstId), { exact: true }).waitFor();
+  await selection.getByText(docNames.get(lastId), { exact: true }).waitFor();
+  assert.deepEqual(JSON.parse(calls.findLast((call) => call.pathname === '/api/v1/ask/document-scope').body), {
+    version: 1, documentIds: [firstId, lastId],
   });
-  assert.equal(calls.some((call) => call.method === 'POST' && call.pathname.startsWith('/api/v1/ask')), false);
+  assert.equal(calls.some((call) => call.pathname === '/api/v1/ask/stream'), false);
+  const requestInScope = async (question, ids) => {
+    const prompt = desktop.locator('.ask-form input');
+    await prompt.fill(question);
+    const awaited = desktop.waitForResponse((response) => requestPath(response) === '/api/v1/ask/stream');
+    await desktop.locator('.ask-form button[type="submit"]').click();
+    const received = await awaited;
+    const data = received.request().postDataJSON();
+    assert.deepEqual(data.documentScope?.documents.map((doc) => doc.id), ids);
+    const stream = await received.text();
+    const events = stream.split(/\r?\n/u).filter((line) => line.startsWith('data:'));
+    return events.map((line) => JSON.parse(line.slice(5))).findLast((event) =>
+      ['verified_final', 'partial', 'interrupted', 'failed'].includes(event.type));
+  };
+  await desktop.screenshot({ path: join(output, 'ask-selected-scope.png') });
+  const initialStart = modelCalls.length;
+  const firstAsk = await requestInScope(marker, [firstId, lastId]);
+  assert(firstAsk?.response?.answer?.citations.length > 0, JSON.stringify(firstAsk));
+  assert(firstAsk.response.answer.citations.every((cite) => [firstId, lastId].includes(cite.documentId)));
+  assert.equal(firstAsk.response.answer.blocks?.items[0]?.kind, 'documents');
+  // Read the actual tool transcripts, so a pass requires scoped candidate collection before accepting citations.
+  const seen = modelCalls.slice(initialStart).flatMap(({ context }) =>
+    [...JSON.stringify(context.messages).matchAll(/合成原始读数 (\d+)-\d+/gu)].map((m) => 'search-doc-' + m[1]));
+  assert(seen.length > 0);
+  assert(seen.every((id) => [firstId, lastId].includes(id)));
+  const initialPins = firstAsk.response.documentScope.documents;
+  await selection.getByRole('button', { name: '移除' + docNames.get(lastId), exact: true }).click();
+  await desktop.reload();
+  await selection.getByText(docNames.get(firstId), { exact: true }).waitFor();
+  assert.equal(await selection.getByText(docNames.get(lastId), { exact: true }).count(), 0);
+  const followStart = modelCalls.length;
+  const follow = await requestInScope('继续查找校准', [firstId]);
+  assert(follow?.response?.answer?.citations.length > 0, JSON.stringify(follow));
+  assert(follow.response.answer.citations.every((cite) => cite.documentId === firstId));
+  assert.deepEqual(follow.response.documentScope.documents, initialPins.filter((doc) => doc.id === firstId));
+  assert(modelCalls.slice(followStart).some((call) => call.kind === 'rewrite'));
+  for (const call of modelCalls.slice(followStart).filter(({ kind }) => kind === 'rewrite')) {
+    assert(!JSON.stringify(call.context).includes(exactQuote));
+  }
+  const fromAnswer = desktop.getByRole('link', { name: '在检索中查看', exact: true });
+  await fromAnswer.waitFor();
+  const href = new URL(await fromAnswer.getAttribute('href'), origin);
+  assert.equal(href.searchParams.get('q'), marker);
+  assert.equal(href.searchParams.get('documentId'), firstId);
+  const beforeReturn = desktop.waitForResponse(isBodySearch);
+  await fromAnswer.click();
+  assert.equal((await (await beforeReturn).json()).scope.documentId, firstId);
+  const returnedPassage = panel.getByRole('link', { name: '预览命中原文' }).first();
+  await returnedPassage.click();
+  await desktop.getByRole('complementary', { name: readerName }).getByRole('heading', { name: docNames.get(firstId) }).waitFor();
+  const pin = initialPins.find((doc) => doc.id === firstId);
+  const endpoint = (request, body) => desktop.request.post(origin + request, { data: body });
+  const selectedRequest = (documents) => ({ question: marker, consentConfirmed: true, documentScope: { version: 1, documents } });
+  const staleBody = selectedRequest([pin]);
+  const callCount = modelCalls.length;
+  assert.equal((await endpoint('/api/v1/ask', selectedRequest([{ id: 'missing', version: pin.version }]))).status(), 400);
+  assert.equal((await endpoint('/api/v1/ask', selectedRequest([]))).status(), 400);
+  assert.equal(modelCalls.length, callCount);
+  const chunkBefore = firstId + '-chunk-4';
+  db.prepare('UPDATE doc_chunks SET id = ? WHERE id = ?').run(chunkBefore + '-revision', chunkBefore);
+  const stale = await endpoint('/api/v1/ask', staleBody);
+  assert.equal(stale.status(), 400);
+  assert(!(await stale.text()).includes(exactQuote));
+  const playback = follow.response.delivery.taskId;
+  const checkpoint = db.prepare('SELECT plan_json FROM agent_task_checkpoints WHERE task_id = ? ORDER BY version DESC LIMIT 1').get(playback);
+  assert.deepEqual(JSON.parse(checkpoint.plan_json).documentScope, follow.response.documentScope);
+  db.prepare("UPDATE agent_tasks SET status = 'interrupted' WHERE id = ?").run(playback);
+  const resumeReply = await endpoint('/api/v1/agent-tasks/' + playback + '/resume', {});
+  const resumeBody = await resumeReply.text();
+  assert.equal(resumeReply.status(), 200);
+  assert(resumeBody.includes('event: failed'));
+  assert(!resumeBody.includes(exactQuote));
+  assert.equal(modelCalls.length, callCount);
+  await desktop.goBack();
+  await desktop.reload();
+  await selection.getByRole('alert').waitFor();
+  await selection.getByRole('button', { name: '改为全库检索' }).click();
+  await desktop.reload();
+  await desktop.locator('.ask-form input').waitFor();
+  assert.equal(await selection.count(), 0);
+  db.prepare('UPDATE doc_chunks SET id = ? WHERE id = ?').run(chunkBefore, chunkBefore + '-revision');
+  onGenerate = () => db.prepare("UPDATE documents SET status = 'failed' WHERE id = ?").run(firstId);
+  const withdrawn = await endpoint('/api/v1/ask/stream', staleBody);
+  const withdrawnBody = await withdrawn.text();
+  assert(withdrawnBody.includes('event: failed'));
+  assert(!withdrawnBody.includes('event: verified_final') && !withdrawnBody.includes(exactQuote));
+  onGenerate = undefined;
+  db.prepare("UPDATE documents SET status = 'ready' WHERE id = ?").run(firstId);
+  forcePartial = true;
+  const fullLibrary = await requestInScope(marker, undefined);
+  forcePartial = false;
+  assert(fullLibrary.response.delivery.resumeAvailable);
+  await desktop.getByRole('button', { name: '继续查找依据' }).waitFor();
+  await desktop.screenshot({ path: join(output, 'ask-library-scope.png') });
+  console.log('PASS scoped ask, follow-up, reload, revocation/version response, explicit clear, history isolation and answer-to-search roundtrip');
   console.log('PASS aggregation, separate result counts, ranked pagination, selection, exact preview, navigation handoff');
 
   const natural = 'How do I check calibrationprobe optical drift?';
@@ -191,6 +328,20 @@ try {
   await panel.getByText('7 份资料，28 个片段').waitFor();
   assert.equal(await desktop.getByLabel('资料类型').inputValue(), 'sop');
   assert.equal(await desktop.getByText('已选 2 份资料', { exact: true }).count(), 0);
+  await panel.getByRole('checkbox', { name: '选择 ' + scoped.hits[0].documentTitle, exact: true }).check();
+  await desktop.getByRole('link', { name: '基于此资料问答', exact: true }).click();
+  await selection.getByText(scoped.hits[0].documentTitle, { exact: true }).waitFor();
+  await desktop.getByText(/原任务的检索范围与当前不同/u).waitFor();
+  assert.equal(await desktop.getByRole('button', { name: '继续查找依据' }).count(), 0);
+  const preserved = new URL(await selection.getByRole('link', { name: '返回检索选资料' }).getAttribute('href'), origin);
+  assert.equal(preserved.searchParams.get('kind'), 'document');
+  assert.equal(preserved.searchParams.get('material'), 'sop');
+  assert.equal(preserved.searchParams.get('q'), natural);
+  assert.equal(preserved.searchParams.has('documentId'), false);
+  const returnSearch = desktop.waitForResponse(isBodySearch);
+  await selection.getByRole('link', { name: '返回检索选资料' }).click();
+  await returnSearch;
+  await panel.getByText('7 份资料，28 个片段').waitFor();
   const narrowResponse = desktop.waitForResponse(isBodySearch);
   await panel.getByRole('link', { name: '仅检索此资料' }).first().click();
   const narrowed = await (await narrowResponse).json();
@@ -200,10 +351,12 @@ try {
   await panel.getByRole('checkbox', { name: '选择 ' + narrowed.hits[0].documentTitle, exact: true }).check();
   await desktop.getByRole('link', { name: '基于此资料问答', exact: true }).click();
   await desktop.waitForURL('**/ask');
-  assert.deepEqual(await desktop.evaluate(() => history.state.usr.searchHandoff), {
-    version: 1, query: natural, documentIds: [narrowed.scope.documentId], material: 'sop',
-    documentId: narrowed.scope.documentId,
-  });
+  await selection.getByText(narrowed.hits[0].documentTitle, { exact: true }).waitFor();
+  const back = new URL(await selection.getByRole('link', { name: '返回检索选资料' }).getAttribute('href'), origin);
+  assert.equal(back.searchParams.get('q'), natural);
+  assert.equal(back.searchParams.get('kind'), 'document');
+  assert.equal(back.searchParams.get('material'), 'sop');
+  assert.equal(back.searchParams.get('documentId'), narrowed.scope.documentId);
   await desktop.goBack();
   await panel.getByText('1 份资料，4 个片段').waitFor();
   await desktop.getByRole('link', { name: '清除资料范围' }).click();
@@ -325,6 +478,7 @@ try {
   assert.equal(ledgerQuick.status(), 200);
   assert.deepEqual((await ledgerQuick.json()).items.map((hit) => hit.id), ['matching-person']);
   assert.equal((await signedOut.request.get(quickUrl({ kind: 'document', material: 'sop' }))).status(), 401);
+  assert.equal((await signedOut.request.post(origin + '/api/v1/ask/document-scope', { data: { version: 1, documentIds: [firstId] } })).status(), 401);
 
   for (const scope of [{ material: 'sop' }, { documentId: 'title-only' }]) {
     const search = await runSearch(desktop, titleOnly, { kind: 'document', ...scope });

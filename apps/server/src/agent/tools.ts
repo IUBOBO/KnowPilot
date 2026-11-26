@@ -231,6 +231,7 @@ export interface RetrieveToolDeps {
   config: AppConfig;
   pool: EvidencePool;
   documentId?: string;
+  validateScope?: () => ReadonlySet<string>;
   /**
    * 本次运行共享的可见证据预算。省略时按单次上限独立计算（便于验证脚本直接调工具）。
    * 预算耗尽后不再把新证据渲染给模型 —— 已有证据仍可引用，不把整次问答判失败。
@@ -256,6 +257,7 @@ export function createRetrieveTool(deps: RetrieveToolDeps): AgentTool<typeof Ret
       '回答里的每个事实性结论都必须引用这里返回的证据号。',
     parameters: RetrieveParams,
     execute: async (_toolCallId, params): Promise<AgentToolResult<RetrieveDetails>> => {
+      const documentIds = deps.validateScope?.();
       const mode: SearchMode = params.mode ?? 'hybrid';
       const limit = params.limit ?? DEFAULT_LIMIT;
       const material: Material | undefined = params.material;
@@ -297,10 +299,12 @@ export function createRetrieveTool(deps: RetrieveToolDeps): AgentTool<typeof Ret
           ...(material === undefined ? {} : { material }),
           ...(documentId === undefined ? {} : { documentId }),
         },
-      });
+      }, undefined, documentIds === undefined ? undefined : [...documentIds]);
 
-      const originalIds = new Set(result.hits.map((hit) => hit.chunkId));
-      const evidenceHits = expandSectionEvidence(deps.db, result.hits, params.query);
+      const confirmed = deps.validateScope?.();
+      const hits = result.hits.filter((hit) => confirmed === undefined || confirmed.has(hit.documentId));
+      const originalIds = new Set(hits.map((hit) => hit.chunkId));
+      const evidenceHits = expandSectionEvidence(deps.db, hits, params.query);
       const sources = loadChunkEvidenceRows(deps.db, evidenceHits.map((hit) => hit.chunkId));
 
       // 先做候选表（原文 + 来源），再让预算器决定这次展示哪几段。
@@ -447,7 +451,7 @@ export function createRetrieveTool(deps: RetrieveToolDeps): AgentTool<typeof Ret
           droppedCount: dropped,
           truncatedCount,
           searched: true,
-          lookup: { requestedMode: mode, scope: documentId === undefined ? 'library' : 'document', limit,
+          lookup: { requestedMode: mode, scope: documentId === undefined && documentIds === undefined ? 'library' : 'document', limit,
             ...(material === undefined ? {} : { material }),
           },
           ...(result.ranking === undefined ? {} : { ranking: {
@@ -561,6 +565,10 @@ export function createReadPaperTool(deps: RetrieveToolDeps): AgentTool<typeof Re
     execute: async (toolCallId, params, signal) => {
       const anchor = deps.pool.get(params.evidence_id);
       if (anchor?.kind !== 'document') throw new Error('请先检索目标论文，提供它的证据号。');
+      const documentIds = deps.validateScope?.();
+      if (documentIds !== undefined && !documentIds.has(anchor.documentId)) {
+        throw new Error('该文档不在当前选定资料中。');
+      }
       if (params.scope === 'section') {
         const query = params.query?.trim();
         if (!query) throw new Error('请提供要查的章节或关键术语。');
