@@ -167,7 +167,7 @@
           "release_merge_sha": "e79559903f909c4166fb9f21616c7b12d686744c"
         },
         "g1_docs_pr": 19,
-        "status": "awaiting_4_merge_approval",
+        "status": "accepted",
         "branch_merge_tree_check": "passed",
         "pull_requests": {
           "g1_docs": 19,
@@ -175,13 +175,29 @@
           "6": 20,
           "4": 23
         },
-        "deferred": {
-          "3.full-accepted": "4.released",
-          "4.released": "13-B.4.post"
-        },
+        "deferred": {},
         "g1_docs_merge_sha": "038edf56bf5655387c8a6a955cf3c68525611407",
-        "latest_verified_main_sha": "d1013c3e72f3844acea43ee808cf1ac480658aab",
-        "active": {}
+        "latest_verified_main_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
+        "active": {},
+        "docs_pr_merge_sha": "65e8a7e6ba5d001a7fc48ab5ab072626c9d92baf"
+      },
+      "wave_2": {
+        "status": "awaiting_merge_approval",
+        "scope": [
+          5,
+          7
+        ],
+        "baseline_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
+        "deferred": {
+          "8.ready": "wait_for_7_release_and_approval"
+        },
+        "combined_pre": {
+          "status": "passed",
+          "tree_sha": "3e09991b19c1d4c3abcfc1f3abfe29e9551210fc",
+          "commands_passed": 6,
+          "commands_total": 6,
+          "commands_sha256": "64cdb7be743a599d47db32deb6445cc9b6efb175ce1ff6f9b0473e8bdb486497"
+        }
       }
     },
     {
@@ -305,7 +321,7 @@
     {
       "issue": 3,
       "stable_id": "V2-03",
-      "state": "stage_merged_integration_pending",
+      "state": "accepted",
       "owner_role": "Answer composer",
       "owner": "g2_blocks",
       "branch": "codex/v2-03-answer-blocks",
@@ -315,7 +331,8 @@
         "3.N1",
         "3.N2",
         "3.N3",
-        "3.released"
+        "3.released",
+        "3.full-accepted"
       ],
       "prs": [
         21
@@ -323,23 +340,25 @@
       "head_sha": "9a359af3c6da4b4d5f19223fe9c7fad9fc7e0062",
       "merge_sha": "e79559903f909c4166fb9f21616c7b12d686744c",
       "acceptance": {
-        "status": "stage_postmerge_passed",
+        "status": "passed",
         "evidence": [
           "docs/plans/v2/V2-03.md",
           "docs/plans/v2/gates/G2.md"
         ],
         "reviewer": "independent_spec_and_standards",
-        "full_integration": "premerge_verified_awaiting_4_released",
-        "reason": "Corrected candidate independently reviewed. The exact merge SHA passed offline 13-B.3.post. Full acceptance waits for 4.released.",
-        "integration_pr": 23
+        "full_integration": "passed",
+        "reason": "Six dynamic-answer cases and integrated reader accepted after exact #23 merge replay.",
+        "integration_pr": 23,
+        "integration_merge_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3"
       },
       "release_node": "3.full-accepted",
-      "base_sha": "37556f2f894935a25c56c26003dbd265cdec13db"
+      "base_sha": "37556f2f894935a25c56c26003dbd265cdec13db",
+      "issue_state": "closed"
     },
     {
       "issue": 4,
       "stable_id": "V2-04",
-      "state": "awaiting_merge_approval",
+      "state": "accepted",
       "owner_role": "Evidence UI",
       "owner": "g2_reader",
       "branch": "codex/v2-04-evidence-viewer",
@@ -348,21 +367,22 @@
         "4.ready",
         "4.N1",
         "4.N2",
-        "4.N3"
+        "4.N3",
+        "4.released"
       ],
       "prs": [
         23
       ],
-      "head_sha": "d1cd07dbd283918975db59b3b173bd26567cc041",
-      "merge_sha": null,
+      "head_sha": "cb617c53ce5c6db64b92a48575df2af920832030",
+      "merge_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
       "acceptance": {
-        "status": "premerge_passed",
+        "status": "passed",
         "evidence": [
           "docs/plans/v2/V2-04.md",
           "docs/plans/v2/gates/G2.md"
         ],
         "reviewer": "independent_spec_and_standards",
-        "reason": "Four candidate checks verified across the actual UI, Hono and temporary SQLite. Issue remains open until the real merge and 13-B.4.post."
+        "reason": "Four Issue checks passed on the actual merge SHA. Closed after 13-B.4.post."
       },
       "release_node": "4.released",
       "base_sha": "d1013c3e72f3844acea43ee808cf1ac480658aab",
@@ -376,27 +396,43 @@
         },
         "requires": "3.released",
         "released_by_merge_sha": "e79559903f909c4166fb9f21616c7b12d686744c",
-        "integration_state": "verified_in_candidate"
-      }
+        "integration_state": "verified_on_merge"
+      },
+      "issue_state": "closed"
     },
     {
       "issue": 5,
       "stable_id": "V2-05",
-      "state": "planned",
+      "state": "awaiting_merge_approval",
       "owner_role": "PDF viewer",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
-      "prs": [],
-      "head_sha": null,
+      "owner": "g2_pdf",
+      "branch": "codex/v2-05-pdf-reader",
+      "worktree_alias": "KnowPilot-V2-05",
+      "completed_nodes": [
+        "5.ready",
+        "5.N1",
+        "5.N2",
+        "5.N3"
+      ],
+      "prs": [
+        26
+      ],
+      "head_sha": "d5587bd08419d9544ea43e64113f6209314d5445",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "pre_merge_passed",
+        "evidence": [
+          "docs/plans/v2/V2-05.md",
+          "docs/plans/v2/gates/G2.md"
+        ],
+        "reviewer": "independent specification and implementation reviews"
       },
-      "release_node": "5.released"
+      "release_node": "5.released",
+      "base_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
+      "dispatch": {
+        "released_by": "4.released",
+        "baseline_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3"
+      }
     },
     {
       "issue": 6,
@@ -434,21 +470,36 @@
     {
       "issue": 7,
       "stable_id": "V2-07",
-      "state": "planned",
+      "state": "awaiting_merge_approval",
       "owner_role": "Search UI",
-      "owner": null,
-      "branch": null,
-      "worktree_alias": null,
-      "completed_nodes": [],
-      "prs": [],
-      "head_sha": null,
+      "owner": "g2_search",
+      "branch": "codex/v2-07-search-results",
+      "worktree_alias": "KnowPilot-V2-07",
+      "completed_nodes": [
+        "7.ready",
+        "7.N1",
+        "7.N2",
+        "7.N3"
+      ],
+      "prs": [
+        25
+      ],
+      "head_sha": "c5bf1f7714c3fb3e273a01457a819221b90f503d",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "pre_merge_passed",
+        "evidence": [
+          "docs/plans/v2/V2-07.md",
+          "docs/plans/v2/gates/G2.md"
+        ],
+        "reviewer": "independent specification and implementation reviews"
       },
-      "release_node": "7.released"
+      "release_node": "7.released",
+      "base_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
+      "dispatch": {
+        "released_by": "4.released",
+        "baseline_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3"
+      }
     },
     {
       "issue": 8,
@@ -564,7 +615,10 @@
         "13-B.6.pre",
         "13-B.3.post",
         "13-B.6.post",
-        "13-B.4.pre"
+        "13-B.4.pre",
+        "13-B.4.post",
+        "13-B.5.pre",
+        "13-B.7.pre"
       ],
       "prs": [
         16
@@ -847,6 +901,44 @@
               "pr": 23,
               "pre": {
                 "status": "passed",
+                "tested_local_sha": "61f4d8080e861c7f3468a1a6301c04514f831a6b",
+                "pull_request_head": "cb617c53ce5c6db64b92a48575df2af920832030",
+                "verified_release_tree_sha": "569d90c2c8daf224ad0458eeca23193ac23ba4c1",
+                "commands_passed": 20,
+                "commands_total": 21,
+                "evidence_hashes": {
+                  "commands.json": "8c90329b466f027b47ba45963ab42342eabeb8522bd2c3b9ebffca2c54a6fb1b",
+                  "targeted.json": "cfc2095a6b9e47a9ad0839e5a882f5546cd6233003b5fdf16ac6dcee85190dce",
+                  "blockers.json": "3c746542eb79f095c28339c8ad59e9326e3af4db0227f884e9165dc43a3e015e"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "passed",
+                "merge_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
+                "commands_passed": 20,
+                "commands_total": 21,
+                "model_checks": "not_run",
+                "evidence_hashes": {
+                  "commands.json": "563e35f3c5766d346387e2071202edce893d90987d282703166cddc908d2feba",
+                  "targeted.json": "8ca148644090ed423c97176133a6f613e9540504374f320317e93ade0dbc002f",
+                  "blockers.json": "aafd40ef27dcc5a5fef1f59bc0cdb69f1a6b3e849d3d43ff6813ec7c421b4db2"
+                },
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "initial_pre": {
+                "status": "passed",
                 "tested_local_sha": "1436301bc905dc04a1f903a2d46489fbd3f4de7d",
                 "pull_request_head": "d1cd07dbd283918975db59b3b173bd26567cc041",
                 "verified_release_tree_sha": "2d3ffd46ea36978f91cc2f0ad386010610f95c94",
@@ -864,10 +956,98 @@
                   "passed_assertions": 28,
                   "total_assertions": 30
                 }
+              }
+            },
+            "5": {
+              "pr": 26,
+              "pre": {
+                "status": "passed",
+                "tested_local_sha": "b3313c29a0ffd3eecaef8037117443f771dc3ae7",
+                "pull_request_head": "d5587bd08419d9544ea43e64113f6209314d5445",
+                "verified_release_tree_sha": "d3068e7161f746bd560f3caa86e74d19cf8d2f95",
+                "commands_passed": 14,
+                "commands_total": 15,
+                "evidence_hashes": {
+                  "commands.json": "09f0ddf428be7199957865a6b9634be541bf1a9a2ee3daef2c4119ec5148bdf6",
+                  "targeted.json": "c5a3c442b77c8ea44e6965bf67a1c121dabf84e502de144bd322c82e51a4a285",
+                  "blockers.json": "0e4f6bef53c168dfa8768dbc4a676709c59ec1bf171b167ac8fe37384f2f7b95"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
               },
               "post": {
-                "status": "not_run",
-                "merge_sha": null
+                "status": "not_run"
+              },
+              "prior_pre": {
+                "status": "passed",
+                "tested_local_sha": "bc3598a66132d18c79dd1d60afe98a4ee1d048e8",
+                "pull_request_head": "25c28371f2f6cd6920053c3f67291ad9611b9e6f",
+                "verified_release_tree_sha": "6d02f4bd232c5b491fa33fb55fff41e0e076bd19",
+                "commands_passed": 14,
+                "commands_total": 15,
+                "evidence_hashes": {
+                  "commands.json": "196b7ed89b6a6711771d98d81aadc19ecddf7d4cac69d66e75c8a1ee1fa8862e",
+                  "targeted.json": "c6bf701012598c633e6accc12d9bbcf94988700fe1517cd4131e122efcd918f3",
+                  "blockers.json": "acef0f3331752e64f060edc7696cf9e571a02da2a60e809e19f2fdb5372156e7"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              }
+            },
+            "7": {
+              "pr": 25,
+              "pre": {
+                "status": "passed",
+                "tested_local_sha": "a79b424e0882e15b062c77beadb2a88eab34ab4d",
+                "pull_request_head": "c5bf1f7714c3fb3e273a01457a819221b90f503d",
+                "verified_release_tree_sha": "ef6fe37a87ba9640e082ccb9519baf0064179f64",
+                "commands_passed": 17,
+                "commands_total": 18,
+                "evidence_hashes": {
+                  "commands.json": "7579f3da6ac5f1f394c280ba7869f356b930d065929f2f99c4ac0a7f07a7c0ba",
+                  "targeted.json": "03fa2bd0e850b5ed377ed0a6029a942bc7e015fe8c51fb32e0f3d82496ba3fd3",
+                  "blockers.json": "98210aefa9e6bf4b3ae296300e314b2e588a684b97239d3158b83914ad97c7cd"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "not_run"
+              },
+              "prior_pre": {
+                "status": "passed",
+                "tested_local_sha": "f4abb8db305bb8bd415ff1fae5fefe3fa2d8584e",
+                "pull_request_head": "46dabe56093b7cd94dc8fbfb559f8907dd4c5d60",
+                "verified_release_tree_sha": "4451bbdd8013ffcd099d1f26932f9e2578977af1",
+                "commands_passed": 17,
+                "commands_total": 18,
+                "evidence_hashes": {
+                  "commands.json": "3e79ab6daa1a8ed5758773c78d622a5ea3c4cab67fb884b4be711ddaf5beae72",
+                  "targeted.json": "c37943b2268b9a8660ec3659912d35814e30204f071867b0f56864ace6b678c8",
+                  "blockers.json": "5b1bf6f687f99fc4cafd5060032385d3a5238d243978316a20026106c1a6372b"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
               }
             }
           }
@@ -879,5 +1059,5 @@
       }
     }
   ],
-  "development_baseline_sha": "d1013c3e72f3844acea43ee808cf1ac480658aab"
+  "development_baseline_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3"
 }
