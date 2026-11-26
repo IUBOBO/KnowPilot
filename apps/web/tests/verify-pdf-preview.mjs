@@ -13,7 +13,7 @@ import { loadConfig } from '../../server/src/config.ts';
 import { openDb } from '../../server/src/db/index.ts';
 import { matchPdfText } from '../src/components/evidence/pdf-text-match.ts';
 import { cases } from './fixtures/pdf-preview-cases.mjs';
-import { cjkPdf, layeredPdf, mainPdf, otherPdf } from './fixtures/synthetic-pdf.mjs';
+import { cjkPdf, layeredPdf, mainPdf, otherPdf, paintedPdf } from './fixtures/synthetic-pdf.mjs';
 
 const item = (str, x, y, width, hasEOL = false) => ({
   str, transform: [12, 0, 0, 12, x, y], dir: 'ltr', width, height: 12, hasEOL,
@@ -46,6 +46,7 @@ await Promise.all([mkdir(output, { recursive: true }), mkdir(uploads, { recursiv
 await Promise.all([
   writeFile(join(uploads, 'main.pdf'), mainPdf),
   writeFile(join(uploads, 'other.pdf'), otherPdf),
+  writeFile(join(uploads, 'painted.pdf'), paintedPdf),
   writeFile(join(uploads, 'layers.pdf'), layeredPdf),
   writeFile(join(uploads, 'cjk.pdf'), cjkPdf),
   writeFile(join(uploads, 'invalid.pdf'), 'Synthetic damaged file'),
@@ -236,8 +237,21 @@ try {
   assert.equal(await highlight().count(), 0);
   await show('hidden-layer', /Default hidden selection/u, 1, /隐藏或无法核对的可选内容/u);
   assert.equal(await highlight().count(), 0);
-  assert(await image(1).evaluate((canvas) =>
-    canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.every((channel) => channel === 255)));
+  const isBlank = (page) => image(page).evaluate((canvas) =>
+    canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data.every((channel) => channel === 255));
+  assert(await isBlank(1));
+  for (const [id, quote, page] of [
+    ['path-clipped', 'Synthetic clipped evidence', 1],
+    ['painted-over', 'Synthetic painted-over evidence', 2],
+  ]) {
+    await show(id, quote, page, /当前页无法可靠定位摘录|已在本页定位摘录/u);
+    assert(await isBlank(page));
+    assert.equal(await highlight().count(), 0, id);
+    await pane.getByText(/当前页无法可靠定位摘录/u).waitFor();
+    assert.equal(await pane.locator('mark').textContent(), quote);
+  }
+  await show('restored-clip', /Synthetic visible after restoring clip/u, 3, /已在本页定位摘录/u);
+  assert.equal(await highlight().count(), 1);
   await show('visible-layer', /Default visible selection/u, 2, /已在本页定位摘录/u);
   assert.equal(await highlight().count(), 1);
   await show('chinese', /中文原文/u, 1, /已在本页定位摘录/u);
@@ -378,7 +392,7 @@ try {
 
   console.log(`PASS browser production build + Hono/SQLite, protected GET 200/401/404, ${activity.count} real workers started and released`);
   console.log('PASS physical and printed page labels, jumps, zoom, fullscreen, cross-line highlighter and layout fallbacks');
-  console.log('PASS raster, invisible OCR and hidden-layer fallbacks, stale indexes, non-PDF, cancellation and mobile');
+  console.log('PASS raster, invisible OCR, hidden-layer and masked-text fallbacks, stale indexes, non-PDF, cancellation and mobile');
   console.log('PASS search excerpts with and without a clipping mark, strict answer quotes, visible layers and CJK line wrapping');
 } catch (error) {
   if (desktop) await desktop.screenshot({ path: join(output, 'pdf-failure.png') }).catch(() => {});

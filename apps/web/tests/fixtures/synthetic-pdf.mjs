@@ -49,6 +49,13 @@ export const mainPdf = pdf([
 ], '/PageLabels << /Nums [0 << /S /r >> 1 << /S /D /St 12 >>] >>');
 export const otherPdf = pdf([line(48, 724, 'Second document with independent text')]);
 
+const clip = '2 2 5 5 re W n';
+export const paintedPdf = pdf([
+  `q ${clip}\n${line(48, 724, 'Synthetic clipped evidence')}\nQ`,
+  `${line(48, 724, 'Synthetic painted-over evidence')}\n1 g 0 0 612 792 re f`,
+  `q ${clip} Q\n${line(48, 724, 'Synthetic visible after restoring clip')}`,
+]);
+
 export const layeredPdf = pdf([
   `/OC /Hidden BDC\n${line(48, 724, 'Default hidden selection')}\nEMC`,
   `/OC /Visible BDC\n${line(48, 724, 'Default visible selection')}\nEMC`,

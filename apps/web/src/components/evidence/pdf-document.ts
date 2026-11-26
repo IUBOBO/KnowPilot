@@ -96,9 +96,49 @@ type PageResult = { rects: HighlightRect[]; message?: string };
 type DisplayContentConfig = ReturnType<PDFDocumentProxy['getOptionalContentConfig']>;
 const uncertain = '当前页无法可靠定位摘录。请核对原文片段；表格、公式或索引偏差可能影响匹配。';
 
+function hasClippedText(operators: readonly number[]): boolean {
+  const savedClips: boolean[] = [];
+  let clipped = false;
+  for (const operator of operators) {
+    switch (operator) {
+      case OPS.save:
+      case OPS.paintFormXObjectBegin:
+      case OPS.beginGroup:
+        savedClips.push(clipped);
+        break;
+      case OPS.restore:
+      case OPS.paintFormXObjectEnd:
+      case OPS.endGroup:
+        clipped = savedClips.pop() ?? false;
+        break;
+      case OPS.clip:
+      case OPS.eoClip:
+        clipped = true;
+        break;
+      case OPS.showText:
+        if (clipped) return true;
+        break;
+    }
+  }
+  return false;
+}
+
+function hasPixelVariation(context: CanvasRenderingContext2D, rect: HighlightRect, bounds: DOMRect) {
+  const { width, height } = context.canvas;
+  const scaleX = width / bounds.width;
+  const scaleY = height / bounds.height;
+  const left = Math.floor(rect.left * scaleX);
+  const top = Math.floor(rect.top * scaleY);
+  const right = Math.min(width, Math.ceil((rect.left + rect.width) * scaleX));
+  const bottom = Math.min(height, Math.ceil((rect.top + rect.height) * scaleY));
+  const { data } = context.getImageData(left, top, right - left, bottom - top);
+  // Visible glyphs cannot be confirmed within an entirely uniform region.
+  return data.some((channel, index) => index >= 4 && channel !== data[index % 4]);
+}
+
 async function locateOnPage(
-  page: PDFPageProxy, viewport: ReturnType<PDFPageProxy['getViewport']>, stage: HTMLDivElement,
-  quote: string, contentConfig: DisplayContentConfig, signal: AbortSignal,
+  page: PDFPageProxy, viewport: ReturnType<PDFPageProxy['getViewport']>, canvas: HTMLCanvasElement,
+  stage: HTMLDivElement, quote: string, contentConfig: DisplayContentConfig, signal: AbortSignal,
 ): Promise<PageResult> {
   const content = await page.getTextContent({ disableNormalization: true });
   const items = content.items.filter((item) => 'str' in item);
@@ -136,6 +176,8 @@ async function locateOnPage(
         (key === 'ca' || key === 'CA') && value === 0));
   });
   if (invisibleText) return { rects: [], message: '此页含不可见文字层，可能来自 OCR，请核对原文片段。' };
+  // Text extraction retains glyphs even when a page path clips their drawing.
+  if (hasClippedText(operators.fnArray)) return { rects: [], message: uncertain };
   signal.throwIfAborted();
 
   const container = document.createElement('div');
@@ -150,6 +192,8 @@ async function locateOnPage(
     await layer.render();
     signal.throwIfAborted();
     const bounds = stage.getBoundingClientRect();
+    const context = canvas.getContext('2d');
+    if (context === null) return { rects: [], message: uncertain };
     const rects: HighlightRect[] = [];
     for (const [i, { start, end }] of match.ranges.entries()) {
       const text = layer.textDivs[i]?.firstChild;
@@ -165,7 +209,9 @@ async function locateOnPage(
       if (width <= 0 || height <= 0 || ![left, top, width, height].every(Number.isFinite)) {
         return { rects: [], message: uncertain };
       }
-      rects.push({ left, top, width, height });
+      const highlight = { left, top, width, height };
+      if (!hasPixelVariation(context, highlight, bounds)) return { rects: [], message: uncertain };
+      rects.push(highlight);
     }
     return { rects, message: '已在本页定位摘录。' };
   } finally {
@@ -216,7 +262,7 @@ export async function renderPdfPage({ pdf, page: number, width, zoom, quote, can
     }
     if (quote === null) return { rects: [] };
     try {
-      return await locateOnPage(page, viewport, stage, quote, contentConfig, signal);
+      return await locateOnPage(page, viewport, canvas, stage, quote, contentConfig, signal);
     } catch {
       return { rects: [], message: uncertain };
     }
