@@ -190,6 +190,13 @@
         "baseline_sha": "7e7b8b4cb206b1c00856bd15fa78f9f1b5ceb9d3",
         "deferred": {
           "8.ready": "wait_for_7_release_and_approval"
+        },
+        "combined_pre": {
+          "status": "passed",
+          "tree_sha": "3e09991b19c1d4c3abcfc1f3abfe29e9551210fc",
+          "commands_passed": 6,
+          "commands_total": 6,
+          "commands_sha256": "64cdb7be743a599d47db32deb6445cc9b6efb175ce1ff6f9b0473e8bdb486497"
         }
       }
     },
@@ -389,7 +396,7 @@
         },
         "requires": "3.released",
         "released_by_merge_sha": "e79559903f909c4166fb9f21616c7b12d686744c",
-        "integration_state": "verified_in_candidate"
+        "integration_state": "verified_on_merge"
       },
       "issue_state": "closed"
     },
@@ -410,7 +417,7 @@
       "prs": [
         26
       ],
-      "head_sha": "25c28371f2f6cd6920053c3f67291ad9611b9e6f",
+      "head_sha": "d5587bd08419d9544ea43e64113f6209314d5445",
       "merge_sha": null,
       "acceptance": {
         "status": "pre_merge_passed",
@@ -477,7 +484,7 @@
       "prs": [
         25
       ],
-      "head_sha": "46dabe56093b7cd94dc8fbfb559f8907dd4c5d60",
+      "head_sha": "c5bf1f7714c3fb3e273a01457a819221b90f503d",
       "merge_sha": null,
       "acceptance": {
         "status": "pre_merge_passed",
@@ -955,6 +962,29 @@
               "pr": 26,
               "pre": {
                 "status": "passed",
+                "tested_local_sha": "b3313c29a0ffd3eecaef8037117443f771dc3ae7",
+                "pull_request_head": "d5587bd08419d9544ea43e64113f6209314d5445",
+                "verified_release_tree_sha": "d3068e7161f746bd560f3caa86e74d19cf8d2f95",
+                "commands_passed": 14,
+                "commands_total": 15,
+                "evidence_hashes": {
+                  "commands.json": "09f0ddf428be7199957865a6b9634be541bf1a9a2ee3daef2c4119ec5148bdf6",
+                  "targeted.json": "c5a3c442b77c8ea44e6965bf67a1c121dabf84e502de144bd322c82e51a4a285",
+                  "blockers.json": "0e4f6bef53c168dfa8768dbc4a676709c59ec1bf171b167ac8fe37384f2f7b95"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "not_run"
+              },
+              "prior_pre": {
+                "status": "passed",
                 "tested_local_sha": "bc3598a66132d18c79dd1d60afe98a4ee1d048e8",
                 "pull_request_head": "25c28371f2f6cd6920053c3f67291ad9611b9e6f",
                 "verified_release_tree_sha": "6d02f4bd232c5b491fa33fb55fff41e0e076bd19",
@@ -972,14 +1002,34 @@
                   "passed_assertions": 28,
                   "total_assertions": 30
                 }
-              },
-              "post": {
-                "status": "not_run"
               }
             },
             "7": {
               "pr": 25,
               "pre": {
+                "status": "passed",
+                "tested_local_sha": "a79b424e0882e15b062c77beadb2a88eab34ab4d",
+                "pull_request_head": "c5bf1f7714c3fb3e273a01457a819221b90f503d",
+                "verified_release_tree_sha": "ef6fe37a87ba9640e082ccb9519baf0064179f64",
+                "commands_passed": 17,
+                "commands_total": 18,
+                "evidence_hashes": {
+                  "commands.json": "7579f3da6ac5f1f394c280ba7869f356b930d065929f2f99c4ac0a7f07a7c0ba",
+                  "targeted.json": "03fa2bd0e850b5ed377ed0a6029a942bc7e015fe8c51fb32e0f3d82496ba3fd3",
+                  "blockers.json": "98210aefa9e6bf4b3ae296300e314b2e588a684b97239d3158b83914ad97c7cd"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "not_run"
+              },
+              "prior_pre": {
                 "status": "passed",
                 "tested_local_sha": "f4abb8db305bb8bd415ff1fae5fefe3fa2d8584e",
                 "pull_request_head": "46dabe56093b7cd94dc8fbfb559f8907dd4c5d60",
@@ -998,9 +1048,6 @@
                   "passed_assertions": 28,
                   "total_assertions": 30
                 }
-              },
-              "post": {
-                "status": "not_run"
               }
             }
           }
