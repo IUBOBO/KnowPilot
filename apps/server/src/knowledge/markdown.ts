@@ -10,7 +10,7 @@
  *   渲染逻辑是唯一能把它消灭在构造上的办法。
  */
 import type { KnowledgeEntry } from '@knowpilot/shared';
-import { knowledgeTitle } from '@knowpilot/shared';
+import { KNOWLEDGE_CLAIM_LABELS, knowledgeTitle } from '@knowpilot/shared';
 
 /**
  * 渲染成入库用的 markdown。
@@ -38,7 +38,7 @@ import { knowledgeTitle } from '@knowpilot/shared';
  *   的保证失效。改完请跑 `KNOWLEDGE_CHECK_REAL_MODEL=1 npm run verify-knowledge`
  *   —— 它里面有一条"完全相同的两条应当 ≈1.0"的断言，专门盯着这件事。
  */
-export function renderKnowledgeMarkdown(entry: Pick<KnowledgeEntry, 'kind' | 'content'>): string {
+export function renderKnowledgeMarkdown(entry: Pick<KnowledgeEntry, 'kind' | 'content'> & Partial<Pick<KnowledgeEntry, 'note'>>): string {
   // 【结尾不留空行，同样是踩出来的】解析器切出来的块文本结尾没有换行。
   //   这里多一个 `\n`，完全相同的两条知识就只算出 0.987（实测），
   //   而那 0.012 的差白送给一个没有意义的分隔符。去掉之后两侧逐字节相同。
@@ -46,6 +46,9 @@ export function renderKnowledgeMarkdown(entry: Pick<KnowledgeEntry, 'kind' | 'co
     knowledgeTitle(entry.content, entry.kind),
     '',
     `> 来源：知识沉淀（${entry.kind}）`,
+    ...(entry.note?.draftDetails === undefined ? [] : [`> 内容性质：${KNOWLEDGE_CLAIM_LABELS[entry.note.draftDetails.claim]}`]),
+    ...(entry.note?.draftSource?.kind === 'ask' && entry.note.draftSource.excerptVerification === 'submitted'
+      ? ['> 问答选段由作者提交，原答复未独立核验。'] : []),
     '',
     entry.content.trim(),
   ].join('\n');

@@ -6,6 +6,7 @@ import { apiPost, toApiError } from '../../api.ts';
 import { useAuth } from '../../auth.tsx';
 import { ErrorNotice } from '../../components/ErrorNotice.tsx';
 import { qualifyNoteCitations, selectedNoteText } from '../notes/note-citations.ts';
+import { DraftSourceAction } from '../knowledge/DraftSourceAction.tsx';
 import { answerNoteSections } from './answer-note-sections.ts';
 
 export interface NoteDraft {
@@ -103,6 +104,8 @@ export function AskNoteActions({ result }: { result: AskResponse }) {
           onPointerDown={(event) => { if (event.pointerType === 'mouse') event.preventDefault(); }}>保存选段</button>
         <button type="button" disabled={busy} onClick={append}
           onPointerDown={(event) => { if (event.pointerType === 'mouse') event.preventDefault(); }}>追加到已有笔记</button>
+        <DraftSourceAction disabled={busy || selection === ''} source={{ kind: 'ask', id: result.runId,
+          excerpt: selection.replace(/\u0000(E\d+)\u0000/gu, '[$1]') }} />
       </div>
       {notice && <p role="status">{notice}</p>}
       {error !== null && <ErrorNotice error={error} />}

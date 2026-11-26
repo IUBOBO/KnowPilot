@@ -14,6 +14,8 @@ import { createSession, deleteSession, SESSION_COOKIE } from '../../server/src/a
 import { insertUser } from '../../server/src/auth/users.ts';
 import { insertCodeAsset } from '../../server/src/code/repo.ts';
 import { loadConfig } from '../../server/src/config.ts';
+import { ingestDocument } from '../../server/src/documents/ingest.ts';
+import { uploadDocument } from '../../server/src/documents/upload.ts';
 import { openDb } from '../../server/src/db/index.ts';
 
 const webRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -88,7 +90,11 @@ models.streamSimple = (model, context) => {
   ).join('\n');
   const id = contextText.match(/\[(E\d+)\] [^\n]*\n来源版本/u)?.[1];
   const hasRetrieved = context.messages.some((message) => message.role === 'toolResult');
-  const options = id === undefined && !hasRetrieved
+  const draftText = contextText.match(/<<<用户输入开始>>>\n([\s\S]*?)\n<<<用户输入结束>>>/u)?.[1];
+  const options = draftText !== undefined ? { name: 'submit_entries', arguments: { entries: [
+    { kind: 'fact', content: draftText, evidence: draftText,
+      claim: /当前素材入口：document/u.test(context.systemPrompt) ? 'literature' : 'experience' },
+  ] } } : id === undefined && !hasRetrieved
     ? { name: 'retrieve', arguments: { query: marker, mode: 'keyword' } }
     : { name: 'submit_answer', arguments: {
       answer: id === undefined ? '未找到合成依据。' : `${exactQuote} [${id}]` +
@@ -777,6 +783,53 @@ try {
   await noteScope.getByText(replacementTitle, { exact: true }).waitFor();
   await answerForNote('核对重新选择的合成资料');
 
+  async function submitDraftFromCurrentSource(page, expectedKind, snippet) {
+    const before = modelCalls.length;
+    await page.getByRole('button', { name: '提炼为知识草稿', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '提炼为知识草稿' });
+    const submit = dialog.getByRole('button', { name: '生成待确认草稿' });
+    assert.equal(await submit.isDisabled(), true);
+    assert.equal(modelCalls.length, before);
+    if (snippet !== undefined) {
+      const savedBody = dialog.getByRole('textbox',{ name:'从已保存笔记中选择要提炼的片段' });
+      const exactSelection = await savedBody.evaluate((input,length) => {
+        input.focus();
+        input.setSelectionRange(0,length);
+        return input.value.slice(input.selectionStart,input.selectionEnd);
+      },snippet.length);
+      assert.equal(exactSelection,snippet);
+      await savedBody.dispatchEvent('mouseup');
+      await dialog.getByText(`已选 ${snippet.length} / 4000 字`, { exact:true }).waitFor();
+    }
+    await dialog.getByRole('checkbox').check();
+    const [response] = await Promise.all([
+      page.waitForResponse((reply) => requestPath(reply) === '/api/v1/knowledge/drafts'),
+      submit.click(),
+    ]);
+    assert.equal(response.status(), 201, await response.text());
+    const { entries } = await response.json();
+    assert.equal(entries[0].note.draftSource.kind, expectedKind);
+    assert.equal(entries[0].status, 'proposed');
+    assert.equal(entries[0].documentId, null);
+    await dialog.getByRole('link', { name: /预览和编辑/u }).waitFor();
+    await dialog.getByRole('button', { name: '关闭', exact: true }).last().click();
+    return entries[0];
+  }
+  await askAnswer.locator('.ask-note-content p').filter({ hasText: exactQuote }).first().evaluate((paragraph) => {
+    const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+    let text = walker.nextNode();
+    while (text !== null && !text.textContent.includes('Check calibrationprobe optical drift.')) text = walker.nextNode();
+    if (text === null) throw new Error('Cannot select ask excerpt');
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+  const askDraft = await submitDraftFromCurrentSource(notePage, 'ask');
+  assert.equal(askDraft.note.draftDetails.claim, 'inference');
+
   const noteId = new URL(fullNoteUrl).searchParams.get('note');
   const linkedRun = db.prepare('SELECT run_id FROM research_note_runs WHERE note_id=? ORDER BY rowid').get(noteId);
   assert(linkedRun !== undefined);
@@ -805,7 +858,60 @@ try {
   await noteReader.getByText(/此证据不可读取/).waitFor();
   assert.equal(await noteReader.getByRole('heading', { name: datasetTitle }).count(), 0);
   assert(!calls.slice(datasetStart).some(({ pathname }) => pathname === '/api/v1/code-assets/' + datasetId + '/evidence'));
+  const noteFixture = await notePage.request.post(origin + '/api/v1/research-notes', { data: {
+    title: '便签合成草稿', body: '人工保存的合成笔记正文用于离线草稿验证。', tags: [],
+  } });
+  assert.equal(noteFixture.status(), 201);
+  const saved = await noteFixture.json();
+  await notePage.goto(origin + '/knowledge/notes?note=' + saved.id);
+  await noteEditor.getByRole('heading', { name: '便签合成草稿' }).waitFor();
+  await noteEditor.getByLabel('标题').fill('未保存的临时标题');
+  assert.equal(await noteEditor.getByRole('button', { name: '提炼为知识草稿' }).count(), 0);
+  await noteEditor.getByLabel('标题').fill(saved.title);
+  await submitDraftFromCurrentSource(notePage, 'note');
+  const noteExcerpt = '合成长笔记第一段选段校验正文。';
+  const longNoteFixture = await notePage.request.post(origin + '/api/v1/research-notes', { data: {
+    title:'可选择片段的合成长笔记', body:noteExcerpt+'\n'+'填'.repeat(5000),tags:[],
+  } });
+  assert.equal(longNoteFixture.status(),201);
+  const longSaved = await longNoteFixture.json();
+  await notePage.goto(origin + '/knowledge/notes?note=' + longSaved.id);
+  await noteEditor.getByRole('heading',{name:'可选择片段的合成长笔记'}).waitFor();
+  const selectedNoteDraft = await submitDraftFromCurrentSource(notePage,'note',noteExcerpt);
+  assert.equal(selectedNoteDraft.note.draftSource.excerpt,noteExcerpt);
+  assert.deepEqual(selectedNoteDraft.note.draftSource.selection,{start:0,end:noteExcerpt.length});
+
+  const { documentId: draftDoc } = await uploadDocument(db, config, {
+    file: new File(['实验片段合成草稿正文，用于离线浏览器回归。'], 'draft-source.txt'),
+    material: 'paper', uploadedBy: userId, consentConfirmedBy: userId,
+  });
+  await ingestDocument(db, config, draftDoc);
+  const draftChunk = db.prepare('SELECT id FROM doc_chunks WHERE doc_id=?').get(draftDoc).id;
+  await notePage.goto(origin + '/chunk/' + draftChunk);
+  await submitDraftFromCurrentSource(notePage, 'document');
+
+  await notePage.goto(origin + '/knowledge');
+  const manualConsent = notePage.getByRole('checkbox', { name: '我已阅读并理解' });
+  await manualConsent.check();
+  await notePage.getByLabel('要沉淀的内容').fill('手动浏览器路径的合成可确认正文。');
+  const [manualResponse] = await Promise.all([
+    notePage.waitForResponse((reply) => requestPath(reply) === '/api/v1/knowledge/drafts'),
+    notePage.getByRole('button', { name: '生成草案', exact: true }).click(),
+  ]);
+  assert.equal(manualResponse.status(), 201);
+  const manualDraft = (await manualResponse.json()).entries[0];
+  assert.equal(manualDraft.note.draftSource.kind, 'manual');
+  const manualRow = notePage.locator('.kb-entry').filter({ hasText: manualDraft.content });
+  await manualRow.getByRole('button', { name: '编辑草稿' }).click();
+  await manualRow.getByRole('textbox', { name: '草稿正文' }).fill('手动浏览器路径人工改写的合成确认正文。');
+  await manualRow.getByRole('button', { name: '保存修改' }).click();
+  const edited = notePage.locator('.kb-entry').filter({ hasText: '手动浏览器路径人工改写的合成确认正文。' });
+  const editedGroup = notePage.locator('.kb-group').filter({ has: edited });
+  await editedGroup.getByRole('button', { name: '确认整组（1 条）' }).click();
+  await edited.getByText('已生效', { exact: true }).waitFor();
+  await notePage.screenshot({ path: join(output, 'knowledge-draft-review.png') });
   assert.deepEqual(pageErrors, []);
+  console.log('PASS four browser draft entries, per-action source consent, editor, provenance and manual confirmation');
   console.log('PASS research-note save/edit/selection, run-qualified citations, private search prefill and scoped history, dataset reauthorization, withdrawal and no automatic model call');
 } catch (error) {
   console.error(error);

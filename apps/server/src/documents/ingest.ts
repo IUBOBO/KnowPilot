@@ -30,7 +30,8 @@ import type { Db } from '../db/index.ts';
 import { chunkDocument } from './chunk.ts';
 import { EMBED_DIM, embedTexts, isModelReady } from './embed.ts';
 import { extractDocument } from './extract.ts';
-import { findById } from './repo.ts';
+import { findByContentHash, findById } from './repo.ts';
+import type { PreparedDocumentUpload, StagedDocumentOriginal } from './upload.ts';
 import { rankingText } from './ranking-text.ts';
 import { invalidateVectorCache, saveEmbeddings } from './vector.ts';
 
@@ -38,9 +39,15 @@ export async function ingestDocument(
   db: Db,
   cfg: AppConfig,
   documentId: string,
+  publication?: { validate: () => void; finish: () => void; staged?: { upload: PreparedDocumentUpload; original: StagedDocumentOriginal } },
 ): Promise<IngestReport> {
   const model = embeddingModelKey(cfg);
-  const row = findById(db, documentId, model);
+  const staged = publication?.staged;
+  const prepared = staged?.upload;
+  const row = staged === undefined ? findById(db, documentId, model) : {
+    source_path: staged.original.path, title: staged.upload.title, file_name: staged.upload.fileName,
+    material: staged.upload.material, index_version: INDEX_VERSION,
+  };
   if (row === undefined) {
     throw new AppError('not_found', `文档不存在：${documentId}`);
   }
@@ -55,7 +62,7 @@ export async function ingestDocument(
 
   if (!existsSync(absPath)) {
     const note = `原件不在磁盘上：${row.source_path}。请重新上传这份文件。`;
-    markFailed(db, documentId, note);
+    if (prepared === undefined) markFailed(db, documentId, note);
     throw new AppError('invalid_argument', note);
   }
 
@@ -68,7 +75,7 @@ export async function ingestDocument(
   } catch (err) {
     // 解析失败的原因（损坏、加密、格式不符）对用户是可行动的，必须落库，
     // 这样他过半小时回来看到的是"这份文件损坏"，而不是一个空白的 failed。
-    markFailed(db, documentId, err instanceof AppError ? err.message : '解析失败。');
+    if (prepared === undefined) markFailed(db, documentId, err instanceof AppError ? err.message : '解析失败。');
     throw err;
   }
 
@@ -80,7 +87,7 @@ export async function ingestDocument(
     // 不抛错：文档确实传上来了，只是没有可检索的内容（典型是扫描件）。
     // 抛错会让用户以为"上传失败"，而他要做的是改用 OCR 或换一份文件。
     const note = warnings[0] ?? '这份文件没有提取到任何可检索的文字。';
-    markFailed(db, documentId, note);
+    if (prepared === undefined) markFailed(db, documentId, note);
     return {
       blockCount: parsed.blocks.length,
       headingCount,
@@ -138,8 +145,15 @@ export async function ingestDocument(
 
   // 块与状态必须一起生效：只写块不改状态，文档会永远停在 uploaded；
   // 只改状态不写块，就会"状态 ready 但搜不到"—— 两种半成品都极难排查。
-  db.exec('BEGIN');
+  db.exec(publication === undefined ? 'BEGIN' : 'BEGIN IMMEDIATE');
   try {
+    publication?.validate();
+    if (staged !== undefined) {
+      if (findByContentHash(db, staged.upload.contentHash, model) !== undefined) {
+        throw new AppError('invalid_argument', '相同内容已在另一个确认中处理。请重试。', { httpStatus: 409 });
+      }
+      staged.upload.insert(db, staged.original.finalSourcePath);
+    }
     const kept = new Set(chunkIds);
     const archive = db.prepare(
       `INSERT OR IGNORE INTO archived_doc_chunks
@@ -203,9 +217,15 @@ export async function ingestDocument(
       INDEX_VERSION,
       documentId,
     );
+    publication?.finish();
+    staged?.original.promote();
     db.exec('COMMIT');
   } catch (err) {
-    db.exec('ROLLBACK');
+    try {
+      db.exec('ROLLBACK');
+    } finally {
+      staged?.original.rollbackPromotion();
+    }
     throw err;
   }
 

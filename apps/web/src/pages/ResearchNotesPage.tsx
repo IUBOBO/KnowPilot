@@ -11,6 +11,7 @@ import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { EvidenceViewer, useEvidenceViewer } from '../components/evidence/EvidenceViewer.tsx';
 import { PageTitle } from '../components/PageTitle.tsx';
 import { fmtDateTime } from '../format.ts';
+import { DraftSourceAction } from './knowledge/DraftSourceAction.tsx';
 import type { NoteDraft } from './ask/AskNoteActions.tsx';
 import { noteCitationLabel, qualifyNoteCitations } from './notes/note-citations.ts';
 import './notes/notes.css';
@@ -282,6 +283,9 @@ function NoteForm({ note, url, draft, onSaved, onReload, onDeleted }: {
         ? <Link to="/search" state={{ noteResearchTopic: note.title.slice(0, 100), ownerId: user?.id }}>打开检索选取研究资料</Link>
         : <Link to="/ask" state={{ searchHandoff: handoff, noteSearch: { ownerId: user?.id, noteResearchTopic: note.title.slice(0, 100) } }}>使用可用文档继续问答（{documentIds.length} 份）</Link>}
     </section>
+    {!busy && title === note.title && body === note.body && tags === note.tags.join('，') && append === undefined &&
+      <DraftSourceAction key={note.id + ':' + note.revision} noteBody={note.body}
+        source={{ kind: 'note', id: note.id, revision: note.revision }} />}
     {note.runs.length > 0 && <section aria-label="关联问答与来源">
       <h3>关联问答与来源</h3>
       <p className="dim">正文由你编辑。原始证据在阅读器中重新读取。</p>

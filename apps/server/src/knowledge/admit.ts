@@ -14,11 +14,11 @@
 import { createHash } from 'node:crypto';
 import { embeddingModelKey, type AppConfig } from '../config.ts';
 import type { Db } from '../db/index.ts';
-import { findById as findDocument } from '../documents/repo.ts';
+import { findByContentHash, findById as findDocument } from '../documents/repo.ts';
 import { ingestDocument } from '../documents/ingest.ts';
-import { uploadDocument } from '../documents/upload.ts';
+import { prepareDocumentUpload, uploadDocument, type UploadInput } from '../documents/upload.ts';
 import type { IngestReport, KnowledgeEntry, KnowledgeNote } from '@knowpilot/shared';
-import { knowledgeTitle } from '@knowpilot/shared';
+import { AppError, knowledgeTitle } from '@knowpilot/shared';
 import { renderKnowledgeMarkdown } from './markdown.ts';
 import { markActive } from './repo.ts';
 
@@ -48,23 +48,20 @@ function safeFileName(title: string): string {
 /**
  * 一条草案入库。
  *
- * 【三步各自带事务，故意不合成一个大事务】upload / ingest / markActive 每一步
- *   自己就是原子的，但把三步圈在一起会把 embedding 计算也圈进事务里
- *   （`ingest.ts` 特意把它放在事务外，因为模型推理可能几秒到几十秒）。
- *   代价是进程崩在中间会留下"文档已索引、条目还 proposed"的中间态 ——
- *   这个态**再点一次确认就能自愈**（见下面对 duplicated 的处理）。
+ * 有来源的草稿先暂存原件。解析与向量计算在事务外，文档、索引和生效状态在
+ * 事务内一次发布。兼容旧草稿的上传与索引流程，历史中间状态仍可通过重复确认恢复。
  */
 export async function admitEntry(
   db: Db,
   cfg: AppConfig,
-  args: { entry: KnowledgeEntry; actor: AdmitActor; note: KnowledgeNote | null },
+  args: { entry: KnowledgeEntry; actor: AdmitActor; note: KnowledgeNote | null; revalidate?: () => void },
 ): Promise<AdmitResult> {
   const { entry, actor } = args;
   const title = knowledgeTitle(entry.content, entry.kind);
   const markdown = renderKnowledgeMarkdown(entry);
   const file = new File([markdown], safeFileName(title), { type: 'text/markdown' });
 
-  const up = await uploadDocument(db, cfg, {
+  const upload: UploadInput = {
     file,
     material: 'knowledge',
     title,
@@ -72,7 +69,14 @@ export async function admitEntry(
     // 确认这个动作本身就含"我知道它要进知识库"——与上传页勾选框同一条闸门，
     // 只是这里已经在人点「确认」时问过了。
     consentConfirmedBy: actor.id,
-  });
+  };
+  const model = embeddingModelKey(cfg);
+  const candidate = args.revalidate === undefined ? undefined : await prepareDocumentUpload(cfg, upload);
+  args.revalidate?.();
+  const duplicate = candidate === undefined ? undefined : findByContentHash(db, candidate.contentHash, model);
+  const prepared = duplicate === undefined ? candidate : undefined;
+  const up = candidate === undefined ? await uploadDocument(db, cfg, upload) :
+    { documentId: duplicate?.id ?? candidate.id, duplicated: duplicate !== undefined };
 
   // 【为什么不能简单地 `if (!duplicated) ingest`】那会让上面那个中间态**永远卡住**：
   //   崩在 upload 与 ingest 之间时，文档行已存在但没切块，第二次确认会因
@@ -80,9 +84,7 @@ export async function admitEntry(
   //   所以判据改成"这份文档此刻是不是就绪"，而不是"我这次是不是新建的"。
   //   真要跑的仍只有没就绪的那种，重复索引不会发生。
   const needsIngest = !up.duplicated || !isDocumentReady(db, cfg, up.documentId);
-  const ingest = needsIngest ? await ingestDocument(db, cfg, up.documentId) : null;
-
-  markActive(db, {
+  const finish = () => markActive(db, {
     id: entry.id,
     confirmedBy: actor.id,
     confirmedAt: new Date().toISOString(),
@@ -90,6 +92,33 @@ export async function admitEntry(
     note: args.note,
   });
 
+  const stagedOriginal = prepared?.stageOriginal();
+  const publication = args.revalidate === undefined ? undefined : {
+    validate: args.revalidate, finish,
+    ...(prepared === undefined || stagedOriginal === undefined ? {} :
+      { staged: { upload: prepared, original: stagedOriginal } }),
+  };
+  let ingest: IngestReport | null;
+  try {
+    ingest = needsIngest ? await ingestDocument(db, cfg, up.documentId, publication) : null;
+  } finally {
+    stagedOriginal?.dispose();
+  }
+  if (publication === undefined) {
+    finish();
+  } else if (ingest === null) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      publication.validate();
+      finish();
+      db.exec('COMMIT');
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  } else if (ingest.chunkCount === 0) {
+    throw new AppError('invalid_argument', '知识草稿没有生成可检索的内容，请修改后重试。');
+  }
   return { documentId: up.documentId, duplicated: up.duplicated, ingested: needsIngest, ingest };
 }
 

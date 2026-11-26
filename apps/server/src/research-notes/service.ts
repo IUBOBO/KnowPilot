@@ -19,7 +19,7 @@ function readDocumentSource(db: Db, user: AuthUser, locator: DocumentEvidenceLoc
   return context?.document.id === locator.documentId ? context : null;
 }
 
-function presentSource(db: Db, user: AuthUser, source: StoredNoteSource): NoteSource {
+export function presentNoteSource(db: Db, user: AuthUser, source: StoredNoteSource): NoteSource {
   const { citationId, locator } = source;
   const unavailable = { citationId, status: 'unavailable' } as const;
   const changed = { citationId, status: 'changed' } as const;
@@ -79,7 +79,7 @@ export function presentResearchNote(db: Db, user: AuthUser, note: StoredNote): R
       ...(question === undefined ? {} : { question }),
       sources: run.sources.map((source) => question === undefined
         ? { citationId: source.citationId, status: 'unavailable' }
-        : presentSource(db, user, source)),
+        : presentNoteSource(db, user, source)),
     };
   }) };
 }
