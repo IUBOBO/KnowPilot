@@ -69,6 +69,7 @@ const modelCalls = [];
 const exactQuote = `Check ${marker} optical drift.`;
 let toolSequence = 0;
 let onGenerate;
+let holdAnswer;
 let forcePartial = false;
 let includeNoteCode = false;
 function assistant(model, content, stopReason) {
@@ -93,13 +94,20 @@ models.streamSimple = (model, context) => {
       answer: id === undefined ? '未找到合成依据。' : `${exactQuote} [${id}]` +
         (includeNoteCode ? '\n\n`literal[ E1 ] = "[E1]"`\n\n```text\nliteral [E1]\n```' : ''),
       quotes: id === undefined ? [] : [{ evidence_id: id, quote: exactQuote }],
-      evidence_gaps: id === undefined || forcePartial ? ['没有找到完整依据'] : [], limits: [], confidence_notes: [], conflicts: [],
+      evidence_gaps: id === undefined || forcePartial ? ['没有找到完整依据'] : includeNoteCode ? ['合成测量缺少第二批结果'] : [],
+      limits: includeNoteCode ? ['仅适用于本次合成测量'] : [],
+      confidence_notes: includeNoteCode ? ['需要合成复核'] : [],
+      conflicts: includeNoteCode ? ['两份合成记录结论不同'] : [],
       ...(id === undefined ? {} : { blocks: [{ kind: 'documents', evidence_ids: [id] }] }),
     } };
   if (options.name === 'submit_answer') onGenerate?.();
   const msg = assistant(model, [{ type: 'toolCall', id: `scope-${++toolSequence}`, ...options }], 'toolUse');
   const stream = createAssistantMessageEventStream();
-  queueMicrotask(() => stream.push({ type: 'done', reason: 'toolUse', message: msg }));
+  const gate = options.name === 'submit_answer' ? holdAnswer : undefined;
+  queueMicrotask(async () => {
+    await gate;
+    stream.push({ type: 'done', reason: 'toolUse', message: msg });
+  });
   return stream;
 };
 const api = createApp({ db, config, schemaVersion: migration.toVersion, startedAt: Date.now(), models });
@@ -529,13 +537,14 @@ try {
 
   const askAnswer = notePage.getByRole('article', { name: '回答', exact: true });
   const saveAsNote = askAnswer.getByRole('button', { name: '转为研究笔记', exact: true });
-  async function answerForNote(question, expectedQuestions) {
+  async function answerForNote(question, expectedQuestions, afterSubmit) {
     await notePage.locator('.ask-form input').fill(question);
     const [received] = await Promise.all([
       notePage.waitForResponse((r) => requestPath(r) === '/api/v1/ask/stream'),
       notePage.locator('.ask-form button[type="submit"]').click(),
     ]);
     assert.deepEqual(received.request().postDataJSON().history?.map((entry) => entry.question), expectedQuestions);
+    await afterSubmit?.();
     assert((await received.text()).includes(exactQuote));
     await saveAsNote.waitFor();
   }
@@ -551,6 +560,11 @@ try {
   assert.match(await noteBody.inputValue(), /关联证据 \[第 1 轮 · E1\]/u);
   assert((await noteBody.inputValue()).includes('`literal[ E1 ] = "[E1]"`'));
   assert((await noteBody.inputValue()).includes('```text\nliteral [E1]\n```'));
+  const fullAnswer = await noteBody.inputValue();
+  assert(fullAnswer.includes('### 还缺哪些信息\n- 合成测量缺少第二批结果'));
+  assert(fullAnswer.includes('### 本次回答的边界\n- 仅适用于本次合成测量'));
+  assert(fullAnswer.includes('### 需要注意的地方\n- 需要合成复核'));
+  assert(fullAnswer.includes('### 资料之间互相矛盾之处\n- 两份合成记录结论不同'));
   includeNoteCode = false;
   const sources = noteEditor.getByRole('region', { name: '关联问答与来源' });
   const sourceControl = sources.getByRole('button', { name: new RegExp(noteDocumentTitle) });
@@ -590,7 +604,29 @@ try {
   assert(!calls.slice(beforeContinue).some(({ pathname }) => pathname === '/api/v1/ask/stream'));
   assert.equal(modelCalls.length, savedWithoutModel);
 
-  await answerForNote('继续核实合成校准');
+  const completion = Promise.withResolvers();
+  holdAnswer = completion.promise;
+  const noteRunCount = calls.filter(({ pathname }) => pathname === '/api/v1/ask/stream').length;
+  try {
+    await answerForNote('继续核实合成校准', undefined, async () => {
+      const searchNav = notePage.getByRole('link', { name: '统一检索', exact: true });
+      await searchNav.click();
+      await notePage.getByRole('link', { name: '问答：查询中', exact: true }).click();
+      await noteScope.getByText(noteDocumentTitle, { exact: true }).waitFor();
+      await notePage.getByRole('button', { name: '停止', exact: true }).waitFor();
+
+      await searchNav.click();
+      await notePage.getByRole('link', { name: '问答：查询中', exact: true }).waitFor();
+      completion.resolve();
+      await notePage.getByRole('link', { name: '问答：有新回答', exact: true }).click();
+      await noteScope.getByText(noteDocumentTitle, { exact: true }).waitFor();
+    });
+  } finally {
+    holdAnswer = undefined;
+    completion.resolve();
+  }
+  assert.equal(calls.filter(({ pathname }) => pathname === '/api/v1/ask/stream').length, noteRunCount + 1);
+  console.log('PASS note research status link returns to the in-flight or finished ask without changing scope');
   const secondRunModelCalls = modelCalls.length;
   await askAnswer.locator('.ask-note-content').evaluate((element, quote) => {
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);

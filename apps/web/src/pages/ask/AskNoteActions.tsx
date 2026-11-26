@@ -6,6 +6,7 @@ import { apiPost, toApiError } from '../../api.ts';
 import { useAuth } from '../../auth.tsx';
 import { ErrorNotice } from '../../components/ErrorNotice.tsx';
 import { qualifyNoteCitations, selectedNoteText } from '../notes/note-citations.ts';
+import { answerNoteSections } from './answer-note-sections.ts';
 
 export interface NoteDraft {
   ownerId: string;
@@ -15,9 +16,9 @@ export interface NoteDraft {
 }
 
 function answerForNote({ answer }: AskResponse) {
-  if (!isAnswerBlocks(answer.blocks)) return answer.answer;
   const citations = new Set(answer.citations.map(({ id }) => id));
-  const blocks = answer.blocks.items.flatMap((block) => {
+  const items = isAnswerBlocks(answer.blocks) ? answer.blocks.items : [];
+  const blocks = items.flatMap((block) => {
     if (block.kind === 'fallback') return [];
     if ('points' in block) {
       if (block.points.some((point) => !citations.has(point.evidenceId))) return [];
@@ -28,7 +29,9 @@ function answerForNote({ answer }: AskResponse) {
     const sources = block.evidenceIds.map((id) => '[' + id + ']').join(' ');
     return ['text' in block ? [block.text, sources].filter(Boolean).join('\n') : '关联证据 ' + sources];
   });
-  return [answer.answer, ...blocks].join('\n\n');
+  const notes = answerNoteSections(answer).map(({ title, items }) =>
+    ['### ' + title, ...items.map((item) => '- ' + item)].join('\n'));
+  return [answer.answer, ...blocks, ...notes].join('\n\n');
 }
 
 export function AskNoteActions({ result }: { result: AskResponse }) {

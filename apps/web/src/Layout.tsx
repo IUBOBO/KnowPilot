@@ -7,7 +7,7 @@ import { CommandPalette, type PalettePage } from './components/CommandPalette.ts
 import { RecentRail } from './components/RecentRail.tsx';
 import { ADMIN_ENTRY_PERMISSIONS, roleLabel, useAuth } from './auth.tsx';
 import { toApiError } from './api.ts';
-import type { AskActivity } from './ask-session.ts';
+import { readNoteSearchState, type AskActivity, type NoteSearchState } from './ask-session.ts';
 
 const AskPage = lazy(() => import('./pages/AskPage.tsx').then((m) => ({ default: m.AskPage })));
 const ASK_ACTIVITY_LABELS = { running: '查询中', answered: '有新回答', failed: '查询未完成' } as const;
@@ -422,10 +422,17 @@ function ThemeToggle() {
 
 export function Layout() {
   const { can, user } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, state } = useLocation();
   const showAsk = pathname === '/ask' || pathname === '/ask/';
   const [askVisited, setAskVisited] = useState(showAsk);
   const [askActivity, setAskActivity] = useState<AskActivity>('idle');
+  const [askNoteEntry, setAskNoteEntry] = useState<NoteSearchState>();
+  const userId = user?.id;
+  useEffect(() => {
+    if (showAsk) setAskNoteEntry(readNoteSearchState(state?.noteEntry, userId));
+  }, [showAsk, state, userId]);
+  const askReturnState = askNoteEntry !== undefined && askNoteEntry.ownerId === userId ? { noteEntry: askNoteEntry } : undefined;
+
   useEffect(() => {
     if (showAsk) setAskVisited(true);
   }, [showAsk]);
@@ -552,7 +559,7 @@ export function Layout() {
           </div>
           <div className="topbar-actions">
             {!showAsk && visibleAskActivity !== 'idle' && (
-              <Link to="/ask" className="topbar-ask-status">问答：{ASK_ACTIVITY_LABELS[visibleAskActivity]}</Link>
+              <Link to="/ask" state={askReturnState} className="topbar-ask-status">问答：{ASK_ACTIVITY_LABELS[visibleAskActivity]}</Link>
             )}
             <CommandPalette pages={palettePages([...USER_NAV, ...ADMIN_NAV], can)} />
             {showRail && (
