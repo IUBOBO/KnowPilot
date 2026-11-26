@@ -89,6 +89,7 @@ export interface SearchInput {
   limit: number;
   material?: Material;
   documentId?: string;
+  documentIds?: readonly string[];
 }
 
 /**
@@ -312,7 +313,7 @@ export async function searchDocumentCandidates(
   }
 
   const model = embeddingModelKey(cfg);
-  const policy = createRetrievalPolicy(db, query, input.material, input.documentId);
+  const policy = createRetrievalPolicy(db, query, input.material, input.documentId, input.documentIds);
   const keywordCandidates = (): SearchHit[] => {
     const main = keywordHits(db, query, RRF_DEPTH, input.material, policy.scope);
     if (main.length === 0 && policy.preferredDocuments.length > 0 && policy.bodyQuery.replace(/[\s\p{P}\p{S}]/gu,'') === '') {
@@ -347,12 +348,15 @@ export async function searchDocumentCandidates(
 
   const scope = policy.scope;
   const scopedDocument = input.documentId;
-  const totalChunks = scopedDocument === undefined ? countAllChunks(db, input.material)
+  const selectedDocuments = input.documentIds?.filter((id) => scopedDocument === undefined || scopedDocument === id)
+    ?? (scopedDocument === undefined ? undefined : [scopedDocument]);
+  const selected = selectedDocuments === undefined ? undefined : JSON.stringify(selectedDocuments);
+  const totalChunks = selected === undefined ? countAllChunks(db, input.material)
     : (db.prepare(`SELECT COUNT(*) AS n FROM doc_chunks c JOIN documents d ON d.id = c.doc_id
-                   WHERE c.doc_id = ? AND (? IS NULL OR d.material = ?)`)
-      .get(scopedDocument, input.material ?? null, input.material ?? null) as { n: number }).n;
-  const embedded = scopedDocument === undefined ? countEmbeddings(db, model, input.material)
-    : totalChunks === 0 ? 0 : countEmbeddingsOfDoc(db, model, scopedDocument);
+                   WHERE c.doc_id IN (SELECT value FROM json_each(?)) AND (? IS NULL OR d.material = ?)`)
+      .get(selected, input.material ?? null, input.material ?? null) as { n: number }).n;
+  const embedded = selectedDocuments === undefined ? countEmbeddings(db, model, input.material)
+    : totalChunks === 0 ? 0 : selectedDocuments.reduce((sum, id) => sum + countEmbeddingsOfDoc(db, model, id), 0);
   if (embedded === 0 && totalChunks > 0) diagnostics.push('vector_missing');
   if (embedded > 0 && embedded < totalChunks) diagnostics.push('vector_partial');
 
@@ -360,12 +364,12 @@ export async function searchDocumentCandidates(
   if (embedded > 0 && scope.size > 0) {
     try {
       const rank = deps.rankChunks ?? rankChunks;
-      rawRanked = await rank(db, cfg, query, RRF_DEPTH, scope);
+      rawRanked = (await rank(db, cfg, query, RRF_DEPTH, scope)).filter((hit) => scope.has(hit.chunkId));
     } catch {
       return fallback('vector_query_failed', '语义检索不可用：查询向量化或排序失败，已自动改用关键词检索。');
     }
   }
-  const coverageLabel = scopedDocument === undefined ? input.material : 'document';
+  const coverageLabel = selected === undefined ? input.material : 'document';
   const topScore = rawRanked[0]?.score;
   const semanticWeakness = weakSemanticNotice(topScore ?? 0);
   const lowRelevance = topScore !== undefined && topScore < SEMANTIC_LOW_SCORE;

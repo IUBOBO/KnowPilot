@@ -25,10 +25,11 @@ interface AskAnswerProps {
   onRetry: () => void;
   blocks: ReactNode;
   onOpenEvidence?: OpenEvidence;
+  documentSearchHref?: (documentId: string) => string;
 }
 
 export function AskAnswer({
-  result, byId, consent, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks, onOpenEvidence,
+  result, byId, consent, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks, onOpenEvidence, documentSearchHref,
 }: AskAnswerProps) {
   const sources = onOpenEvidence === undefined ? {} : { citationOpen: { runId: result.runId, onOpenEvidence } };
   return (
@@ -45,7 +46,8 @@ export function AskAnswer({
       <FinalAnswerBody text={result.answer.answer} byId={byId} {...sources} />
       {blocks ?? (result.answer.blocks !== undefined && (
         <Suspense fallback={null}>
-          <AnswerBlocks response={result} {...(onOpenEvidence === undefined ? {} : { onOpenEvidence })} />
+          <AnswerBlocks response={result} {...(onOpenEvidence === undefined ? {} : { onOpenEvidence })}
+            {...(documentSearchHref === undefined ? {} : { documentSearchHref })} />
         </Suspense>
       ))}
       {result.delivery.status === 'interrupted' && <p className="ask-answer-note">查询中断。可以继续查找。</p>}

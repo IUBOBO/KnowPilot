@@ -99,6 +99,7 @@ export const ROUTE_PERMISSIONS: readonly RoutePermission[] = [
   // ── 问答（阶段 2）──────────────────────────────────────────
   { method: 'POST', path: '/api/v1/ask', rule: 'chat.use' },
   { method: 'POST', path: '/api/v1/ask/stream', rule: 'chat.use' },
+  { method: 'POST', path: '/api/v1/ask/document-scope', rule: 'chat.use' },
   // 可续跑任务（S7/X1b）：归属校验在 handler 里（别人的任务一律 404）。
   { method: 'GET', path: '/api/v1/agent-tasks/:taskId', rule: 'chat.use' },
   { method: 'POST', path: '/api/v1/agent-tasks/:taskId/resume', rule: 'chat.use' },

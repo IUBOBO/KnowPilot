@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { formatSectionPath, type AskResponse, type Citation, type OpenEvidence } from '@knowpilot/shared';
 import { isAnswerBlocks, type AnswerBlock } from '@knowpilot/shared/answer-blocks';
 import { AnswerBody } from './AnswerMarkdown.tsx';
@@ -14,6 +15,7 @@ const headings = {
 interface SourceProps {
   citations: ReadonlyMap<string, Citation>;
   citationOpen?: CitationOpenContext;
+  documentSearchHref?: (documentId: string) => string;
 }
 
 function SourceMark({ id, citations, citationOpen }: SourceProps & { id: string }) {
@@ -102,6 +104,8 @@ function SourcesBlock({ block, source }: {
                   {cite.sectionPath.length > 0 && ` · ${formatSectionPath(cite.sectionPath)}`}
                 </p>
                 <p>{(cite.quote ?? cite.excerpt).slice(0, 240)}{(cite.quote ?? cite.excerpt).length > 240 ? '…' : ''}</p>
+                {(block.kind === 'documents' || block.kind === 'papers') && source.documentSearchHref !== undefined &&
+                  <Link to={source.documentSearchHref(cite.documentId)}>在检索中查看</Link>}
               </>
             ) : (
               <>
@@ -121,13 +125,18 @@ function SourcesBlock({ block, source }: {
   );
 }
 
-export default function AnswerBlocks({ response, onOpenEvidence }: { response: AskResponse; onOpenEvidence?: OpenEvidence }) {
+export default function AnswerBlocks({ response, onOpenEvidence, documentSearchHref }: {
+  response: AskResponse;
+  onOpenEvidence?: OpenEvidence;
+  documentSearchHref?: (documentId: string) => string;
+}) {
   const { blocks, citations } = response.answer;
   if (blocks === undefined) return null;
   if (!isAnswerBlocks(blocks)) return <p className="dim">部分组件不可用，请查看正文。</p>;
 
   const byId = new Map(citations.map((citation) => [citation.id, citation]));
   const source: SourceProps = { citations: byId,
+    ...(documentSearchHref === undefined ? {} : { documentSearchHref }),
     ...(onOpenEvidence === undefined ? {} : { citationOpen: { runId: response.runId, onOpenEvidence } }) };
   return (
     <div className="answer-blocks">

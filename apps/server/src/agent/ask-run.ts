@@ -35,6 +35,8 @@ import {
   type Citation,
   type ClaimVerdict,
   type ClaimVerification,
+  parseAskDocumentScope,
+  type AskDocumentScopeV1,
   type AskHistoryTurn,
   type AskResponse,
   type AuthUser,
@@ -76,6 +78,7 @@ import { normalizeQuery } from './query-rewriter.ts';
 import { renderHistoryForRewrite, rewriteFollowUp } from './follow-up.ts';
 import type { RewriteEvent } from './retrieval-reflection.ts';
 import { routeTask, type TaskRoute } from './task-router.ts';
+import { requireAskScopeDocuments } from './document-scope.ts';
 import { loadChunkEvidenceRows } from '../documents/repo.ts';
 import {
   commitCheckpoint,
@@ -334,6 +337,7 @@ export interface AskHooks {
 
 /** 检查点解析后的续跑上下文（由 Resume 路由从 checkpoint JSON 还原）。 */
 export interface AskResumeState {
+  documentScope?: AskDocumentScopeV1;
   coverage: string;
   coverageRatio: number;
   subgoals: readonly CheckpointSubgoal[];
@@ -361,6 +365,7 @@ export interface AskTaskInput {
 
 export interface AskInput {
   question: string;
+  documentScope?: AskDocumentScopeV1;
   /**
    * 本会话最近几轮的问答（O3）。省略 = 首轮提问。
    *
@@ -447,6 +452,16 @@ export async function runAsk(
     throw new AppError('invalid_argument', '问题不能为空。');
   }
 
+  const resumeState = input.task?.resume;
+  const rawScope = resumeState === undefined ? input.documentScope : resumeState.documentScope;
+  const documentScope = parseAskDocumentScope(rawScope);
+  if (rawScope !== undefined && documentScope === undefined) {
+    throw new AppError('invalid_argument', '问答资料范围格式无效，请重新选择。');
+  }
+  const validateScope = documentScope === undefined ? undefined
+    : () => requireAskScopeDocuments(deps.db, input.user, documentScope);
+  const scopedIds = validateScope?.();
+
   const cfg = deps.config;
   // 必须在 prompt() 之前解析：pi-ai 的 streamSimple 在缺少鉴权时是【同步抛出】的，
   // 那会违反 StreamFn"不得抛出"的契约，把一次可读的配置错误变成一次
@@ -460,8 +475,6 @@ export async function runAsk(
   const runId = randomUUID();
   const startedAt = Date.now();
   const logId = input.requestId ?? runId;
-  const resumeState = input.task?.resume;
-
   // ── S7/X1b：任务与 attempt ───────────────────────────────────
   // 只给"有登录用户、非评测"的真实问答创建任务；CLI/评测/预算验证保持无任务。
   // 任务创建失败不能让问答失败：能力是增强项，日志里如实记一笔即可。
@@ -517,14 +530,12 @@ export async function runAsk(
   const restoreStartedAt = Date.now();
   let resumeDropped = 0;
   if (resumeState !== undefined) {
-    const rows = loadChunkEvidenceRows(
-      deps.db,
-      resumeState.documents.map((d) => d.chunkId),
-    );
+    const refs = resumeState.documents.filter((doc) => scopedIds === undefined || scopedIds.has(doc.documentId));
+    const rows = loadChunkEvidenceRows(deps.db, refs.map((d) => d.chunkId));
     const chunkToEvidence = new Map<string, string>();
-    for (const ref of resumeState.documents) {
+    for (const ref of refs) {
       const row = rows.get(ref.chunkId);
-      if (row === undefined || String(row.indexVersion) !== ref.sourceVersion) {
+      if (row === undefined || row.documentId !== ref.documentId || String(row.indexVersion) !== ref.sourceVersion) {
         resumeDropped += 1;
         continue;
       }
@@ -553,7 +564,7 @@ export async function runAsk(
     // 记录类证据回表重读：可见性与版本都要重验（见 evidence-restore.ts）。
     // 记录可能在暂停期间被更新或被撤权，这两种情况都必须丢弃，不能沿用旧快照。
     const recordToEvidence = new Map<string, string>();
-    if (resumeState.records.length > 0) {
+    if (scopedIds === undefined && resumeState.records.length > 0) {
       const restored = resolveRecordEvidence({
         db: deps.db,
         codeRoots: cfg.codeRoots,
@@ -747,7 +758,8 @@ export async function runAsk(
   // 这是**唯一**一次进 runAsk 之前就发生的模型调用。它拿不到任何资料，
   // 只把「那分装呢」还原成「样品前处理规程对分装有什么要求」，之后的
   // 路由、计划、检索都用改写后的独立问题；回答里仍展示用户原话。
-  const history = input.history ?? [];
+  const history = scopedIds === undefined ? input.history ?? []
+    : (input.history ?? []).map(({ question: previous }) => ({ question: previous, answer: '（省略历史回答）' }));
   let followUpRewrite: FollowUpRewrite | undefined;
   if (resumeState === undefined && history.length > 0) {
     const followUpStarted = Date.now();
@@ -773,7 +785,7 @@ export async function runAsk(
   // 路由与计划面对的是**改写后的独立问题**；首轮提问时它就是原问题。
   const intentStartedAt = Date.now();
   statusStart('process-intent', '正在识别问题类型…', 'understanding', 'intent');
-  const route = routeTask(effectiveQuestion);
+  const route = scopedIds === undefined ? routeTask(effectiveQuestion) : scopedIds.size > 1 ? 'multi_source' : 'simple';
   const basePlan = buildInvestigationPlan(effectiveQuestion, route);
   const currentSourceKeys = new Set(pool.all().map(investigationSource));
   const followUpSources = new Map<string, string>();
@@ -795,10 +807,12 @@ export async function runAsk(
     today: new Date(startedAt).toISOString().slice(0, 10),
     route,
     question: effectiveQuestion,
-    ledgerTools: input.user !== null,
-  });
+    ledgerTools: scopedIds === undefined && input.user !== null,
+  }) + (scopedIds === undefined ? '' : '\n本轮仅可使用用户选定资料。没有证据时报告缺口，由用户决定是否扩大范围。');
 
-  const retrieveTool = createRetrieveTool({ db: deps.db, config: cfg, pool, contextBudget });
+  const documentTools = { db: deps.db, config: cfg, pool, contextBudget,
+    ...(validateScope === undefined ? {} : { validateScope }) };
+  const retrieveTool = createRetrieveTool(documentTools);
   // 可见范围按提问者算一次，交给工具用 —— 见 LiveToolDeps.scope 的注释：
   // Agent 是绕过界面的第二条读路径，不在这一层过滤就等于没有过滤。
   const submissionsTool = createSubmissionsTool({
@@ -855,14 +869,12 @@ export async function runAsk(
 
   /** 查询工具。轮次上限、进度事件、工具的挂载/摘除都按这一组处理。 */
   const queryTools: AgentTool<any, any>[] = [
-    retrieveTool,
-    createReadPaperTool({ db: deps.db, config: cfg, pool, contextBudget }),
-    submissionsTool,
-    datasetTool,
-    journalTool,
-    investigationTool,
+    retrieveTool, createReadPaperTool(documentTools), investigationTool,
   ];
-  if (input.user !== null) {
+  if (scopedIds === undefined) {
+    queryTools.splice(2, 0, submissionsTool, datasetTool, journalTool);
+  }
+  if (scopedIds === undefined && input.user !== null) {
     queryTools.push(createPatentsTool(deps.db, pool, input.user), createThesesTool(deps.db, pool, input.user),
       createPeopleTool(deps.db, pool, input.user));
   }
@@ -993,6 +1005,7 @@ export async function runAsk(
     // 到上限后把四类查询工具一起从下一轮的声明里摘掉，只留提交答案 ——
     // 这是与计数器无关的兜底：即使计数逻辑本身被改坏，模型也没有工具可调了。
     prepareNextTurnWithContext: (ctx: PrepareNextTurnContext) => {
+      validateScope?.();
       if (pendingSubmission !== undefined) {
         return { context: { messages: ctx.context.messages, tools: [repairTool] as AgentTool<any, any>[] } };
       }
@@ -1071,7 +1084,8 @@ export async function runAsk(
     if (answer.length <= emittedAnswerChars) return;
     const text = answer.slice(emittedAnswerChars);
     emittedAnswerChars = answer.length;
-    onEvent({ type: 'draft_delta', text });
+    // A scoped draft can contain verbatim evidence. Release its body only after the final scope check.
+    if (scopedIds === undefined) onEvent({ type: 'draft_delta', text });
   }
 
   function handleEvent(event: AgentEvent): void {
@@ -1323,8 +1337,10 @@ export async function runAsk(
     }
     // These are attached by the server to the initial user message, not parsed from model text.
     promptEvidence = pool.all().map((entry) => entry.id);
+    validateScope?.();
     await agent.prompt(agentPrompt);
     await agent.waitForIdle();
+    validateScope?.();
   } catch (err) {
     failure = err;
   } finally {
@@ -1476,6 +1492,7 @@ export async function runAsk(
       rewriteEvents,
       cumulative: cumulativeUsage(),
       stopReason,
+      ...(documentScope === undefined ? {} : { documentScope }),
     };
   }
 
@@ -1722,6 +1739,8 @@ export async function runAsk(
       deliveryStatus: 'failed',
       errors: [`运行异常：${message}`],
     });
+    if (scopedIds !== undefined && failure instanceof AppError &&
+      (failure.code === 'invalid_argument' || failure.code === 'permission_denied')) throw failure;
     throw new AppError('internal', `问答过程中出错，请向管理员提供运行编号 ${runId}。`);
   }
 
@@ -1840,6 +1859,7 @@ export async function runAsk(
     });
     return {
       runId,
+      ...(documentScope === undefined ? {} : { documentScope }),
       question,
       answer,
       delivery,
@@ -2003,6 +2023,7 @@ export async function runAsk(
 
   return {
     runId,
+    ...(documentScope === undefined ? {} : { documentScope }),
     question,
     answer,
     delivery,

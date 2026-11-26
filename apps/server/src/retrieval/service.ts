@@ -10,13 +10,14 @@ import { searchDocumentCandidates, type SearchDeps } from '../documents/search.t
 import { queryLedger, recordSourceVersion, renderRecordBody } from './records.ts';
 
 export async function retrieveDocumentPage(
-  db: Db, config: AppConfig, request: DocumentRetrievalRequest, deps?: SearchDeps,
+  db: Db, config: AppConfig, request: DocumentRetrievalRequest, deps?: SearchDeps, documentIds?: readonly string[],
 ): Promise<{ search: SearchResponse; diagnostics: readonly RetrievalDiagnostic[]; nextOffset: number | null }> {
   const { material, documentId } = request.scope;
   const { result, diagnostics } = await searchDocumentCandidates(db, config, {
     query: request.query, mode: request.strategy, limit: request.candidateLimit,
     ...(material === undefined ? {} : { material }),
     ...(documentId === undefined ? {} : { documentId }),
+    ...(documentIds === undefined ? {} : { documentIds }),
   }, deps);
   const end = request.offset + request.limit;
   const hits = result.hits.slice(request.offset, end);

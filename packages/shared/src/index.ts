@@ -12,6 +12,7 @@ export * from './documents.ts';
 export * from './search.ts';
 export * from './evidence-open.ts';
 export * from './answer.ts';
+export * from './ask-document-scope.ts';
 export * from './answer-table.ts';
 export * from './answer-preview.ts';
 export * from './submissions.ts';

@@ -4,14 +4,18 @@ import {
   ASK_HISTORY_QUESTION_CHARS,
   type AskHistoryTurn,
   type AskResponse,
+  type SearchAskHandoffV1,
 } from '@knowpilot/shared';
 
 const SESSION_KEY = 'knowpilot.ask.tab.v1';
 
+export const ASK_SCOPE_SESSION_KEY = 'knowpilot.ask.document-scope.v1';
+export type SearchContext = Pick<SearchAskHandoffV1, 'query' | 'kind' | 'material' | 'documentId'>;
 export type AskActivity = 'idle' | 'running' | 'answered' | 'failed';
 export interface AskTabTurn {
   question: string;
   response: AskResponse;
+  searchContext?: SearchContext;
 }
 
 export function readAskSession(scope: string): AskTabTurn[] {
@@ -40,6 +44,7 @@ export function writeAskSession(scope: string, turns: readonly AskTabTurn[]): vo
 
 export function forgetAskSession(): void {
   writeAskSession('', []);
+  try { sessionStorage.removeItem(ASK_SCOPE_SESSION_KEY); } catch { /* Browser storage disabled. */ }
 }
 
 export function historyForAsk(turns: readonly AskTabTurn[]): AskHistoryTurn[] {

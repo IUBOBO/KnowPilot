@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ASK_HISTORY_LIMIT,
   evidenceMarker,
@@ -18,13 +19,14 @@ import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { EvidenceViewer, useEvidenceViewer } from '../components/evidence/EvidenceViewer.tsx';
 import { answerEvidenceSources } from '../components/evidence/evidence-reader.ts';
 import { NavGlyph } from '../nav-icons.tsx';
-import { historyForAsk, readAskSession, writeAskSession, type AskActivity, type AskTabTurn } from '../ask-session.ts';
+import { historyForAsk, readAskSession, writeAskSession, type AskActivity, type AskTabTurn, type SearchContext } from '../ask-session.ts';
 import { AnswerBody } from './ask/AnswerMarkdown.tsx';
 import { AnswerSources, sourceHref } from './ask/AnswerSources.tsx';
 import { AnswerNotes, AskAnswer } from './ask/AskAnswer.tsx';
 import { AskComposer, AskHistory } from './ask/AskConversation.tsx';
 import { activityLabel, appendProcess, LiveElapsedTime, QueryDetails, type AskProcessProps, type TimelineStep } from './ask/AskProcess.tsx';
 import { AskWorkspace } from './ask/AskWorkspace.tsx';
+import { searchContextHref, useAskDocumentScope } from './ask/useAskDocumentScope.ts';
 import './ask/ask.css';
 
 /**
@@ -62,6 +64,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
   const [turns, setTurns] = useState(() => readAskSession(scope));
   const [consent, setConsent] = useState(() => localStorage.getItem(CONSENT_KEY) === '1');
   const [question, setQuestion] = useState('');
+  const documentSelection = useAskDocumentScope(active, scope, setQuestion);
   const [currentQuestion, setCurrentQuestion] = useState(() => turns.at(-1)?.question ?? '');
   const [result, setResult] = useState<AskResponse | null>(() => turns.at(-1)?.response ?? null);
   const [error, setError] = useState<ApiError | null>(null);
@@ -92,6 +95,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
   const sourceButtonRef = useRef<HTMLButtonElement>(null);
   /** 本次提问的原文；终态事件到达时用它追加一轮历史。`null` = 续跑，不追加。 */
   const questionRef = useRef<string | null>(null);
+  const searchContextRef = useRef<SearchContext | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   /** 推荐问题点一下要落回输入框，所以输入框自己留一个 ref。 */
   const questionInputRef = useRef<HTMLInputElement>(null);
@@ -196,7 +200,9 @@ export function AskPage({ active, scope, onActivity, slots }: {
             }
             const original = asked ?? resumedQuestion;
             if (original === undefined) return previous;
-            return [...previous, { question: original, response }].slice(-ASK_HISTORY_LIMIT);
+            const searchContext = searchContextRef.current;
+            return [...previous, { question: original, response,
+              ...(searchContext === undefined ? {} : { searchContext }) }].slice(-ASK_HISTORY_LIMIT);
           });
         }
         onActivity(event.type === 'interrupted' ? 'failed' : 'answered');
@@ -215,6 +221,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
 
   const ask = useCallback(
     async (text: string, previousContext?: readonly AskHistoryTurn[]) => {
+      if (!documentSelection.ready) return;
       abortRef.current?.abort();
       const ac = new AbortController();
       abortRef.current = ac;
@@ -237,6 +244,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
       const context = [...(previousContext ?? historyForAsk(turns))].slice(-ASK_HISTORY_LIMIT);
       lastRequest.current = { question: text, context };
       questionRef.current = text;
+      searchContextRef.current = documentSelection.origin;
 
       try {
         await apiPostSse(
@@ -244,6 +252,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
           {
             question: text,
             consentConfirmed: true,
+            ...(documentSelection.documentScope === undefined ? {} : { documentScope: documentSelection.documentScope }),
             ...(context.length > 0 ? { history: context } : {}),
           },
           (event) => {
@@ -269,7 +278,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
         questionRef.current = null;
       }
     },
-    [handleStreamEvent, onActivity, turns],
+    [documentSelection.ready, documentSelection.documentScope, documentSelection.origin, handleStreamEvent, onActivity, turns],
   );
 
   /**
@@ -338,7 +347,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = question.trim();
-    if (text === '' || !consent || loading) return;
+    if (text === '' || !consent || loading || !documentSelection.ready) return;
     setQuestion('');
     void ask(text);
   }
@@ -355,7 +364,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
 
   function retryLastRequest() {
     const request = lastRequest.current;
-    if (consent && request !== null) void ask(request.question, request.context);
+    if (consent && documentSelection.ready && request !== null) void ask(request.question, request.context);
   }
 
   function clearHistory() {
@@ -377,7 +386,16 @@ export function AskPage({ active, scope, onActivity, slots }: {
   }
 
   const latestTurn = turns.at(-1);
+  const answerSearch = turns.find((turn) => turn.response.runId === result?.runId)?.searchContext
+    ?? { query: result?.followUpRewrite?.rewritten ?? currentQuestion };
   const isFollowUp = latestTurn !== undefined;
+  const resumedDocuments = result?.documentScope?.documents;
+  const currentDocuments = documentSelection.documentScope?.documents;
+  const canResumeInScope = documentSelection.ready && (resumedDocuments === undefined
+    ? currentDocuments === undefined
+    : resumedDocuments.length === currentDocuments?.length &&
+      resumedDocuments.every((doc) => currentDocuments.some((item) => item.id === doc.id && item.version === doc.version)));
+
   const byId = new Map<string, Citation>(
     (result?.answer.citations ?? []).map((c) => [c.id, c]),
   );
@@ -449,8 +467,29 @@ export function AskPage({ active, scope, onActivity, slots }: {
         </p>
       </ConsentBar>
 
+      {documentSelection.kind !== 'all' && (
+        <section className="card ask-scope" aria-label="问答资料范围">
+          <h2>仅检索所选资料</h2>
+          {documentSelection.pending && <p role="status">正在核对资料范围…</p>}
+          {!documentSelection.pending && !documentSelection.ready && (
+            <p role="alert">选定资料不可用或版本已变化。请移除失效资料、重新选择，或主动改为全库检索。</p>
+          )}
+          {documentSelection.selectedIds.length > 0 && <ul>
+            {documentSelection.selectedIds.map((id, index) => {
+              const title = documentSelection.items.get(id)?.title ?? `资料 ${index + 1}`;
+              return <li key={id}><span>{title}</span>{' '}
+                <button type="button" disabled={loading} onClick={() => documentSelection.remove(id)} aria-label={`移除${title}`}>移除</button>
+              </li>;
+            })}
+          </ul>}
+          <Link to={searchContextHref(documentSelection.origin ?? { query: '' })}>返回检索选资料</Link>{' '}
+          <button type="button" disabled={loading} onClick={documentSelection.clear}>改为全库检索</button>
+        </section>
+      )}
+
       <AskComposer
         question={question} questionInputRef={questionInputRef} consent={consent} loading={loading}
+        scopeReady={documentSelection.ready}
         isFollowUp={isFollowUp} showSuggestions={result === null && turns.length === 0 && !loading}
         suggestions={suggestions} onQuestionChange={setQuestion} onSubmit={onSubmit} onStop={stopRun}
       />
@@ -499,10 +538,14 @@ export function AskPage({ active, scope, onActivity, slots }: {
             sourceButtonRef={sourceButtonRef}
             onToggleReader={toggleSources}
             onRetry={retryLastRequest}
+            documentSearchHref={(id) => searchContextHref(answerSearch, id)}
             blocks={slots?.renderAnswerBlocks?.({ response: result, onOpenEvidence: openEvidence })}
           />
 
-          {resumeTaskId !== undefined && (
+          {resumeTaskId !== undefined && !canResumeInScope && (
+            <p className="ask-answer-note">原任务的检索范围与当前不同。请切回原范围，或用当前范围重新提问。</p>
+          )}
+          {resumeTaskId !== undefined && canResumeInScope && (
             <div className="ask-resume-line">
               <span>还需要更多资料？</span>
               <button type="button" onClick={() => void resume(resumeTaskId)}>继续查找依据</button>

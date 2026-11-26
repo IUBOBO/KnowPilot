@@ -72,11 +72,15 @@ export interface RetrievalPolicy {
   weight: (id: string) => number;
 }
 
-export function createRetrievalPolicy(db: Db, query: string, material?: Material, documentId?: string): RetrievalPolicy {
+export function createRetrievalPolicy(
+  db: Db, query: string, material?: Material, documentId?: string, documentIds?: readonly string[],
+): RetrievalPolicy {
+  const selected = documentIds === undefined ? null : JSON.stringify(documentIds);
   const all = db.prepare(`SELECT c.id,c.doc_id,c.ordinal,c.page,c.section_path,c.text,
        d.title,d.file_name,d.material FROM doc_chunks c JOIN documents d ON d.id=c.doc_id
-       WHERE (? IS NULL OR d.material=?) AND (? IS NULL OR c.doc_id=?) ORDER BY c.doc_id,c.ordinal`)
-    .all(material ?? null, material ?? null, documentId ?? null, documentId ?? null) as unknown as Passage[];
+       WHERE (? IS NULL OR d.material=?) AND (? IS NULL OR c.doc_id=?)
+       AND (? IS NULL OR c.doc_id IN (SELECT value FROM json_each(?))) ORDER BY c.doc_id,c.ordinal`)
+    .all(material ?? null, material ?? null, documentId ?? null, documentId ?? null, selected, selected) as unknown as Passage[];
   const byDoc = new Map<string, Passage[]>();
   for (const row of all) {
     const list = byDoc.get(row.doc_id) ?? []; list.push(row); byDoc.set(row.doc_id, list);
@@ -106,8 +110,8 @@ export function createRetrievalPolicy(db: Db, query: string, material?: Material
   // An ambiguous alias never silently restricts the query to one of its possible papers.
   const preferredDocuments = matched.size === 1 && !compareQuery ? [...matched.keys()] : [];
   const preferred = new Set(preferredDocuments);
-  const selected = preferred.size > 0 ? eligible.filter((r) => preferred.has(r.doc_id)) : eligible;
-  const scope = new Set(selected.map((r) => r.id));
+  const candidates = preferred.size > 0 ? eligible.filter((r) => preferred.has(r.doc_id)) : eligible;
+  const scope = new Set(candidates.map((r) => r.id));
   let bodyQuery = query;
   if (preferred.size > 0) {
     for (const anchor of [...(matched.get(preferredDocuments[0]!) ?? [])].sort((a,b) => b.length-a.length)) {

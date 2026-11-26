@@ -7,6 +7,7 @@ interface AskComposerProps {
   questionInputRef: RefObject<HTMLInputElement | null>;
   consent: boolean;
   loading: boolean;
+  scopeReady?: boolean;
   isFollowUp: boolean;
   showSuggestions: boolean;
   suggestions: readonly string[];
@@ -16,7 +17,7 @@ interface AskComposerProps {
 }
 
 export function AskComposer({
-  question, questionInputRef, consent, loading, isFollowUp, showSuggestions, suggestions,
+  question, questionInputRef, consent, loading, scopeReady = true, isFollowUp, showSuggestions, suggestions,
   onQuestionChange, onSubmit, onStop,
 }: AskComposerProps) {
   return (
@@ -52,7 +53,7 @@ export function AskComposer({
           <button
             key="ask"
             type="submit"
-            disabled={!consent || question.trim() === ''}
+            disabled={!consent || !scopeReady || question.trim() === ''}
           >
             {consent ? (isFollowUp ? '追问' : '提问') : '请先勾选上方云端确认'}
           </button>
