@@ -234,6 +234,17 @@
       "blockers": [],
       "feature_merge_shas": {
         "9": "33d52b998423970a29871c273cabad05665e90f0"
+      },
+      "integration_candidate": {
+        "tree_sha": "38edd02d596e1f2928905a18a23f3ab7175e7af0",
+        "local_only": true,
+        "checks_passed": [
+          "typecheck",
+          "web build",
+          "export-check",
+          "drafts-check",
+          "notes browser"
+        ]
       }
     },
     {
@@ -625,15 +636,24 @@
       "branch": "codex/v2-10-note-export",
       "worktree_alias": "KnowPilot-V2-10",
       "completed_nodes": [
-        "10.ready"
+        "10.ready",
+        "10.N1",
+        "10.N2",
+        "10.N3"
       ],
-      "prs": [],
-      "head_sha": null,
+      "prs": [
+        32
+      ],
+      "head_sha": "6ca8dc21cec044c5f1647cd9f5f2a9b8566406ab",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "awaiting_merge_approval",
+        "evidence": [
+          "docs/plans/v2/V2-10.md",
+          "docs/plans/v2/V2-13.md"
+        ],
+        "reviewer": "independent specification and implementation reviews",
+        "reason": "13-B.10.pre passed. User approval and the exact merge-SHA regression remain pending."
       },
       "release_node": "10.released",
       "base_sha": "33d52b998423970a29871c273cabad05665e90f0",
@@ -644,7 +664,8 @@
         ],
         "baseline_sha": "33d52b998423970a29871c273cabad05665e90f0",
         "test_environment": "isolated SQLite v37 and localhost"
-      }
+      },
+      "issue_state": "open"
     },
     {
       "issue": 11,
@@ -655,15 +676,24 @@
       "branch": "codex/v2-11-draft-sources",
       "worktree_alias": "KnowPilot-V2-11",
       "completed_nodes": [
-        "11.ready"
+        "11.ready",
+        "11.N1",
+        "11.N2",
+        "11.N3"
       ],
-      "prs": [],
-      "head_sha": null,
+      "prs": [
+        33
+      ],
+      "head_sha": "5bbe376ea5a45e655724ec53e795d9524b66c054",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "awaiting_merge_approval",
+        "evidence": [
+          "docs/plans/v2/V2-11.md",
+          "docs/plans/v2/V2-13.md"
+        ],
+        "reviewer": "independent specification and implementation reviews",
+        "reason": "13-B.11.pre passed. User approval and the exact merge-SHA regression remain pending."
       },
       "release_node": "11.released",
       "base_sha": "33d52b998423970a29871c273cabad05665e90f0",
@@ -674,7 +704,8 @@
         ],
         "baseline_sha": "33d52b998423970a29871c273cabad05665e90f0",
         "test_environment": "isolated SQLite v37 and localhost"
-      }
+      },
+      "issue_state": "open"
     },
     {
       "issue": 12,
@@ -723,7 +754,9 @@
         "13-B.8.pre",
         "13-B.8.post",
         "13-B.9.pre",
-        "13-B.9.post"
+        "13-B.9.post",
+        "13-B.10.pre",
+        "13-B.11.pre"
       ],
       "prs": [
         16
@@ -1259,6 +1292,60 @@
                   "total_assertions": 30,
                   "baseline_sha": "819315c7921796508d35e495cbc4af2b94786fe3"
                 }
+              }
+            },
+            "10": {
+              "pr": 32,
+              "pre": {
+                "status": "passed",
+                "pull_request_head": "6ca8dc21cec044c5f1647cd9f5f2a9b8566406ab",
+                "verified_release_tree_sha": "04e638781072bca4e7ccc70a2d9778cd015aba8c",
+                "tested_local_sha": "daac61dba36aafbf2a14a1950f2288674aa6fc38",
+                "tested_tree_sha": "cea3dcda75af413b6c6bc73128d6b10cd20a0b92",
+                "commands_passed": 24,
+                "commands_total": 25,
+                "evidence_hashes": {
+                  "review-results.json": "69ac674bd1e28718b7d184f694af8f08da439727e4ef4572e8c21f67bc22172e",
+                  "targeted.json": "1fccef8e0a994a8aa6ab4fba4711950192825be2f24bbfee39ac947f6f8d27d3",
+                  "blockers.json": "3256dde7a9689e5dce5aed96424c27696ae8e0a0d1a04043783aa54654198bcb"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "not_run"
+              }
+            },
+            "11": {
+              "pr": 33,
+              "pre": {
+                "status": "passed",
+                "pull_request_head": "5bbe376ea5a45e655724ec53e795d9524b66c054",
+                "verified_release_tree_sha": "643e4dbf0fa288cf909aa20b83c8ab7eca78c657",
+                "tested_local_sha": "6183206d7a91499b54fbc444a9a73442ba8e6f45",
+                "tested_tree_sha": "643e4dbf0fa288cf909aa20b83c8ab7eca78c657",
+                "commands_passed": 25,
+                "commands_total": 26,
+                "evidence_hashes": {
+                  "review-results.json": "6bca73bfa137734974d5d901a74d543827eae19dee98e5274b62ec7190d3736e",
+                  "targeted.json": "752f7fe7de35dc3180b754208c34b8c07bf02802495c485335b991d8163bf94c",
+                  "blockers.json": "56b75cdaa38a95c5f68e06ccd0b276c58a54f61f83c518a7681ef0efb8ca95af"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "not_run"
               }
             }
           }
