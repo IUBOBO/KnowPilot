@@ -40,12 +40,13 @@ export function DocumentCheckbox({ id, title, selected, onToggle }: {
     checked={selected.has(id)} onChange={() => onToggle(id)} />;
 }
 
-export function SearchDocuments({ passages, selected, onToggle, onOpen, scopedSearch }: {
+export function SearchDocuments({ passages, selected, onToggle, onOpen, scopedSearch, scopeState }: {
   passages: readonly DocumentRetrievalHit[];
   selected: ReadonlySet<string>;
   onToggle: (id: string) => void;
   onOpen: OpenEvidence;
   scopedSearch: ((documentId: string) => string) | undefined;
+  scopeState?: unknown;
 }) {
   const [view, setView] = useState<'documents' | 'passages'>('documents');
   const [page, setPage] = useState(0);
@@ -83,7 +84,7 @@ export function SearchDocuments({ passages, selected, onToggle, onOpen, scopedSe
             <PassageExcerpt hit={hit} />
             <div className="search-result-actions">
               <PassageLink hit={hit} onOpen={onOpen}>预览命中原文</PassageLink>
-              {scopedSearch !== undefined && <Link to={scopedSearch(hit.documentId)}>仅检索此资料</Link>}
+              {scopedSearch !== undefined && <Link to={scopedSearch(hit.documentId)} state={scopeState}>仅检索此资料</Link>}
             </div>
             {remaining.length > 0 && <details className="search-more-passages">
               <summary>展开其余 {remaining.length} 个命中片段</summary>

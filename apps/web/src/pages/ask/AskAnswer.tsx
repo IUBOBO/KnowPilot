@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, type LinkProps } from 'react-router-dom';
 import {
   FEEDBACK_DOWN_REASONS, FEEDBACK_NOTE_MAX_CHARS, FEEDBACK_REASON_LABELS,
   type Answer, type AnswerFeedback, type AskEvidenceReview, type AskResponse, type Citation,
@@ -9,6 +9,8 @@ import { ApiError, apiPost, isAbort, toApiError } from '../../api.ts';
 import { ErrorNotice } from '../../components/ErrorNotice.tsx';
 import { formatCnyFromUsd } from '../../currency.ts';
 import { FinalAnswerBody } from './AnswerMarkdown.tsx';
+import { AskNoteActions } from './AskNoteActions.tsx';
+import { answerNoteSections } from './answer-note-sections.ts';
 import { renderAnswerCitations, type CitationOpenContext } from './AnswerSources.tsx';
 import { formatElapsed } from './AskProcess.tsx';
 
@@ -25,11 +27,11 @@ interface AskAnswerProps {
   onRetry: () => void;
   blocks: ReactNode;
   onOpenEvidence?: OpenEvidence;
-  documentSearchHref?: (documentId: string) => string;
+  documentSearchLink?: (documentId: string) => Pick<LinkProps, 'to' | 'state'>;
 }
 
 export function AskAnswer({
-  result, byId, consent, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks, onOpenEvidence, documentSearchHref,
+  result, byId, consent, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks, onOpenEvidence, documentSearchLink,
 }: AskAnswerProps) {
   const sources = onOpenEvidence === undefined ? {} : { citationOpen: { runId: result.runId, onOpenEvidence } };
   return (
@@ -43,18 +45,21 @@ export function AskAnswer({
           追问按上文理解为：<b>{result.followUpRewrite.rewritten}</b>
         </p>
       )}
-      <FinalAnswerBody text={result.answer.answer} byId={byId} {...sources} />
-      {blocks ?? (result.answer.blocks !== undefined && (
-        <Suspense fallback={null}>
-          <AnswerBlocks response={result} {...(onOpenEvidence === undefined ? {} : { onOpenEvidence })}
-            {...(documentSearchHref === undefined ? {} : { documentSearchHref })} />
-        </Suspense>
-      ))}
+      <div className="ask-note-content">
+        <FinalAnswerBody text={result.answer.answer} byId={byId} {...sources} />
+        {blocks ?? (result.answer.blocks !== undefined && (
+          <Suspense fallback={null}>
+            <AnswerBlocks response={result} {...(onOpenEvidence === undefined ? {} : { onOpenEvidence })}
+              {...(documentSearchLink === undefined ? {} : { documentSearchLink })} />
+          </Suspense>
+        ))}
+      </div>
       {result.delivery.status === 'interrupted' && <p className="ask-answer-note">查询中断。可以继续查找。</p>}
       {result.delivery.status === 'partial' && result.answer.verification.counts.contradicted > 0 && (
         <p className="ask-answer-note">部分说法与资料不一致，请结合来源核对。</p>
       )}
       <p className="ask-answer-time">用时 {formatElapsed(result.answer.durationMs)}</p>
+      <AskNoteActions key={`note-${result.runId}`} result={result} />
       {/* 逐条要点可直达原文；这里仍保留汇总抽屉，用于核对全部来源。 */}
       {sourceCount > 0 ? (
         <div className="answer-tools ask-answer-toolbar" role="group" aria-label="回答工具">
@@ -329,14 +334,7 @@ function AnswerFeedbackBar({ runId }: { runId: string }) {
  *   用户不点开就永远不知道。其余三类是"完备性说明"，收着更合适。
  */
 export function AnswerNotes({ answer }: { answer: Answer }) {
-  // `hint` 只在有值时给键（本项目开了 exactOptionalPropertyTypes：
-  // 显式传 `undefined` 与"这个字段不出现"是两种类型，后者才是"没有提示语"）。
-  const blocks = [
-    { title: '还缺哪些信息', hint: undefined as string | undefined, items: answer.evidenceGaps },
-    { title: '本次回答的边界', hint: undefined as string | undefined, items: answer.limits },
-    { title: '需要注意的地方', hint: undefined as string | undefined, items: answer.confidenceNotes },
-    { title: '资料之间互相矛盾之处', hint: undefined as string | undefined, items: answer.conflicts },
-  ].filter((b) => b.items.length > 0);
+  const blocks = answerNoteSections(answer);
   if (blocks.length === 0) return null;
 
   const total = blocks.reduce((n, b) => n + b.items.length, 0);
@@ -349,31 +347,17 @@ export function AnswerNotes({ answer }: { answer: Answer }) {
         {conflicts > 0 && <span className="pill warn">有 {conflicts} 处资料矛盾</span>}
       </summary>
       {blocks.map((b) => (
-        <AnswerList
-          key={b.title}
-          title={b.title}
-          {...(b.hint === undefined ? {} : { hint: b.hint })}
-          items={b.items}
-        />
+        <AnswerList key={b.title} title={b.title} items={b.items} />
       ))}
     </details>
   );
 }
 
-function AnswerList({
-  title,
-  hint,
-  items,
-}: {
-  title: string;
-  hint?: string;
-  items: readonly string[];
-}) {
+function AnswerList({ title, items }: { title: string; items: readonly string[] }) {
   if (items.length === 0) return null;
   return (
     <div className="notice">
       <p className="notice-title">{title}</p>
-      {hint !== undefined && <p className="notice-body">{hint}</p>}
       <ul className="notice-list">
         {items.map((item, i) => (
           <li key={i}>{item}</li>

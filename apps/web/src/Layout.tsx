@@ -7,7 +7,7 @@ import { CommandPalette, type PalettePage } from './components/CommandPalette.ts
 import { RecentRail } from './components/RecentRail.tsx';
 import { ADMIN_ENTRY_PERMISSIONS, roleLabel, useAuth } from './auth.tsx';
 import { toApiError } from './api.ts';
-import type { AskActivity } from './ask-session.ts';
+import { readNoteSearchState, type AskActivity, type NoteSearchState } from './ask-session.ts';
 
 const AskPage = lazy(() => import('./pages/AskPage.tsx').then((m) => ({ default: m.AskPage })));
 const ASK_ACTIVITY_LABELS = { running: '查询中', answered: '有新回答', failed: '查询未完成' } as const;
@@ -422,10 +422,17 @@ function ThemeToggle() {
 
 export function Layout() {
   const { can, user } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, state } = useLocation();
   const showAsk = pathname === '/ask' || pathname === '/ask/';
   const [askVisited, setAskVisited] = useState(showAsk);
   const [askActivity, setAskActivity] = useState<AskActivity>('idle');
+  const [askNoteEntry, setAskNoteEntry] = useState<NoteSearchState>();
+  const userId = user?.id;
+  useEffect(() => {
+    if (showAsk) setAskNoteEntry(readNoteSearchState(state?.noteEntry, userId));
+  }, [showAsk, state, userId]);
+  const askReturnState = askNoteEntry !== undefined && askNoteEntry.ownerId === userId ? { noteEntry: askNoteEntry } : undefined;
+
   useEffect(() => {
     if (showAsk) setAskVisited(true);
   }, [showAsk]);
@@ -444,7 +451,7 @@ export function Layout() {
    * 只比相等会让子页面上右栏忽然冒出来 —— 那种"点进去就变样"是最难查的界面回归。
    */
   const isAdminPath = pathname === '/admin' || pathname.startsWith('/admin/');
-  const showRail = !isAdminPath;
+  const showRail = !isAdminPath && pathname !== '/knowledge/notes';
   const railTitle = can('ledger.deletions.read') ? '最近消息' : '最近入库';
   const [railOpen, setRailOpen] = useState(false);
   const railToggleRef = useRef<HTMLButtonElement>(null);
@@ -454,6 +461,7 @@ export function Layout() {
   };
   const currentPage = pathname === '/'
     ? '今天的工作台'
+    : pathname === '/knowledge/notes' ? '研究笔记'
     : pathname.startsWith('/chunk/')
       ? '原文片段'
     : pathname.startsWith('/admin/traces/')
@@ -551,7 +559,7 @@ export function Layout() {
           </div>
           <div className="topbar-actions">
             {!showAsk && visibleAskActivity !== 'idle' && (
-              <Link to="/ask" className="topbar-ask-status">问答：{ASK_ACTIVITY_LABELS[visibleAskActivity]}</Link>
+              <Link to="/ask" state={askReturnState} className="topbar-ask-status">问答：{ASK_ACTIVITY_LABELS[visibleAskActivity]}</Link>
             )}
             <CommandPalette pages={palettePages([...USER_NAV, ...ADMIN_NAV], can)} />
             {showRail && (

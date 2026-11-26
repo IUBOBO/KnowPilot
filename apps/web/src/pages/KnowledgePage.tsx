@@ -274,7 +274,10 @@ export function KnowledgePage() {
 
   return (
     <>
-      <PageTitle icon="capture">知识沉淀</PageTitle>
+      <div className="page-head">
+        <PageTitle icon="capture">知识沉淀</PageTitle>
+        <Link to="/knowledge/notes">研究笔记</Link>
+      </div>
       <p className="lead">输入口述或零散经验，AI 提炼成草案，确认后入库。</p>
 
       {/* 常驻告知：不论勾没勾过都显示。只勾一次就永久记住的话，

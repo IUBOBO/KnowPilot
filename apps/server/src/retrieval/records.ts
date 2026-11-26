@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   hasPermission, PATENT_FILTER_LABELS, PERSON_STATUS_LABELS, SUBMISSION_STATUS_LABELS, isUnverifiedSource,
   type AuthUser, type CitationField, type Patent, type PatentFilter, type Person, type PersonStatus,
@@ -22,6 +23,15 @@ export interface RecordEvidenceInput {
 
 export function recordSourceVersion(record: RecordEvidenceInput): string {
   return record.version ?? record.recordUpdatedAt ?? record.queryTime;
+}
+
+export function recordDependsOnLinkedFields(type: RecordType): boolean {
+  return type === 'M-SUBMIT' || type === 'M-PATENT' || type === 'M-THESIS';
+}
+
+/** Bind visible fields when evidence also depends on linked metadata. */
+export function recordContentFingerprint(title: string, fields: readonly CitationField[]): string {
+  return createHash('sha256').update(JSON.stringify([title, fields.map(({ label, value }) => [label, value])])).digest('hex');
 }
 
 export function renderRecordBody(fields: readonly CitationField[]): string {

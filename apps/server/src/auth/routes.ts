@@ -104,6 +104,15 @@ export const ROUTE_PERMISSIONS: readonly RoutePermission[] = [
   { method: 'GET', path: '/api/v1/agent-tasks/:taskId', rule: 'chat.use' },
   { method: 'POST', path: '/api/v1/agent-tasks/:taskId/resume', rule: 'chat.use' },
   // 提问原文不脱敏，所以可见范围要收：own 是底限，read.all 由行级过滤决定看多少。
+  // Private notes use the same owner filter for all logged-in roles.
+  { method: 'GET', path: '/api/v1/research-notes', rule: 'authenticated' },
+  { method: 'POST', path: '/api/v1/research-notes', rule: 'authenticated' },
+  { method: 'GET', path: '/api/v1/research-notes/:id', rule: 'authenticated' },
+  { method: 'GET', path: '/api/v1/research-notes/:id/runs/:runId/sources/:citationId', rule: 'authenticated' },
+  { method: 'GET', path: '/api/v1/research-notes/:id/runs/:runId/sources/:citationId/file', rule: 'authenticated' },
+  { method: 'GET', path: '/api/v1/research-notes/:id/runs/:runId/sources/:citationId/record', rule: 'authenticated' },
+  { method: 'PATCH', path: '/api/v1/research-notes/:id', rule: 'authenticated' },
+  { method: 'DELETE', path: '/api/v1/research-notes/:id', rule: 'authenticated' },
   { method: 'GET', path: '/api/v1/ask-records', rule: 'askRecord.read.own' },
   { method: 'POST', path: '/api/v1/ask-records/:runId/review', rule: 'chat.use' },
   // 回答反馈（O5）：写只要 `chat.use` —— 能给自己的运行打分是提问能力的一部分。

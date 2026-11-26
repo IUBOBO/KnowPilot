@@ -28,6 +28,7 @@ const SearchPage = lazy(() => import('./pages/SearchPage.tsx').then((m) => ({ de
 const HomePage = lazy(() => import('./pages/HomePage.tsx').then((m) => ({ default: m.HomePage })));
 const JournalsPage = lazy(() => import('./pages/JournalsPage.tsx').then((m) => ({ default: m.JournalsPage })));
 const KnowledgePage = lazy(() => import('./pages/KnowledgePage.tsx').then((m) => ({ default: m.KnowledgePage })));
+const ResearchNotesPage = lazy(() => import('./pages/ResearchNotesPage.tsx').then((m) => ({ default: m.ResearchNotesPage })));
 const KnowledgeReviewPage = lazy(() => import('./pages/KnowledgeReviewPage.tsx').then((m) => ({ default: m.KnowledgeReviewPage })));
 const LoginPage = lazy(() => import('./pages/LoginPage.tsx').then((m) => ({ default: m.LoginPage })));
 const OrganizePage = lazy(() => import('./pages/OrganizePage.tsx').then((m) => ({ default: m.OrganizePage })));
@@ -113,6 +114,7 @@ export const router = createBrowserRouter([
       // 与 /submissions 同惯例不加路由闸门 —— 进得来不等于看得到，
       // 行级可见在服务端的 SQL 里收口（见 auth/scope.ts 的 knowledgeScope）。
       { path: 'knowledge', element: <KnowledgePage /> },
+      { path: 'knowledge/notes', element: <ResearchNotesPage /> },
       // 旧占位入口。地址直接敲仍然到得了知识沉淀那一页 ——
       // 阶段 3/4 期间这一条是 <PlaceholderPage>，贴过的链接与书签不该失效。
       { path: 'capture', element: <Navigate to="/knowledge" replace /> },

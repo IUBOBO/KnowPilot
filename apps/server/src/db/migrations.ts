@@ -1520,4 +1520,35 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_submissions_submitter_person ON submissions(submitter_person_id);
     `,
   },
+  {
+    version: 37,
+    name: 'private-research-notes',
+    sql: `
+      CREATE TABLE research_notes (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        tags_json TEXT NOT NULL,
+        revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX idx_research_notes_owner ON research_notes(owner_id, updated_at DESC, id);
+      CREATE TABLE research_note_runs (
+        note_id TEXT NOT NULL REFERENCES research_notes(id) ON DELETE CASCADE,
+        run_id TEXT NOT NULL,
+        mode TEXT NOT NULL CHECK (mode IN ('answer', 'selection', 'reference')),
+        PRIMARY KEY (note_id, run_id)
+      );
+      CREATE TABLE research_note_sources (
+        note_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        citation_id TEXT NOT NULL,
+        locator_json TEXT,
+        PRIMARY KEY (note_id, run_id, citation_id),
+        FOREIGN KEY (note_id, run_id) REFERENCES research_note_runs(note_id, run_id) ON DELETE CASCADE
+      );
+    `,
+  },
 ];

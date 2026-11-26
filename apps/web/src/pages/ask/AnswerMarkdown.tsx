@@ -44,6 +44,35 @@ function readDisplayMath(lines: readonly string[], start: number) {
   return null;
 }
 
+/** Apply text transforms only where answer Markdown can display citation markers. */
+export function mapAnswerProse(text: string, map: (prose: string) => string): string {
+  function inline(line: string): string {
+    let result = '';
+    let end = 0;
+    for (const token of line.matchAll(INLINE_TOKEN)) {
+      const start = token.index;
+      result += map(line.slice(end, start));
+      const { strong, emphasis } = token.groups!;
+      result += strong === undefined && emphasis === undefined ? token[0]
+        : strong !== undefined ? '**' + inline(strong) + '**' : '*' + inline(emphasis!) + '*';
+      end = start + token[0].length;
+    }
+    return result + map(line.slice(end));
+  }
+
+  const lines = text.split(/\r?\n/u);
+  const result: string[] = [];
+  for (let i = 0; i < lines.length;) {
+    const literal = readFence(lines, i) ?? readDisplayMath(lines, i);
+    if (literal === null) result.push(inline(lines[i++]!));
+    else {
+      result.push(...lines.slice(i, literal.end));
+      i = literal.end;
+    }
+  }
+  return result.join('\n');
+}
+
 function AnswerMath({ source, display = false }: { source: string; display?: boolean }) {
   const formula = source.length > MAX_FORMULA_LENGTH
     ? <code>{source}</code>

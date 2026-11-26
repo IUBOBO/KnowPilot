@@ -264,6 +264,9 @@ import { getDummyHash, verifyPassword } from './auth/password.ts';
 import { LoginRateLimiter } from './auth/rate-limit.ts';
 import { ruleFor, verifyRouteCoverage } from './auth/routes.ts';
 import { askRecordScope, knowledgeScope, submissionScope, uploadScope } from './auth/scope.ts';
+import { noteRevision, parseCreateNote, parseUpdateNote } from './research-notes/input.ts';
+import { createResearchNote, deleteResearchNote, listResearchNotes, readResearchNote, updateResearchNote } from './research-notes/repo.ts';
+import { presentResearchNote, readResearchNoteDocument, readResearchNoteRecord } from './research-notes/service.ts';
 import {
   SESSION_COOKIE,
   createSession,
@@ -293,6 +296,7 @@ import {
   deleteCodeAsset,
   findCodeAssetByLocation,
   getCodeAsset,
+  getCodeAssetEvidence,
   getCodeAssetOwner,
   insertCodeAsset,
   listCodeAssets,
@@ -1259,8 +1263,8 @@ export function createApp(deps: AppDeps): Hono<Env> {
   //   它需要 documents 上有一个"未发表"的标记，而那要等材料状态设计定下来
   //   （见 plan 决定 2）。现在的行为由约束 4 的勾选确认 + 账号体系背书：
   //   能进系统的是实验室成员，不是任意一个打开浏览器的人。
-  app.get('/api/v1/documents/:id/file', async (c) => {
-    const doc = getDocumentFile(deps.db, c.req.param('id'));
+  async function serveDocumentFile(c: Context<Env>, documentId: string, revalidate?: () => void) {
+    const doc = getDocumentFile(deps.db, documentId);
     if (doc === null) throw new AppError('not_found', '没有这份文档。');
     if (doc.sourcePath === null || doc.sourcePath === '') {
       throw new AppError(
@@ -1290,6 +1294,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
       );
     }
 
+    revalidate?.();
     const name = downloadName(doc);
     return c.body(new Uint8Array(bytes), 200, {
       'Content-Type': 'application/octet-stream',
@@ -1300,7 +1305,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
       // 就会被当成网页渲染，等于给我们自己开了个存储型 XSS。
       'X-Content-Type-Options': 'nosniff',
     });
-  });
+  }
+
+  app.get('/api/v1/documents/:id/file', (c) => serveDocumentFile(c, c.req.param('id')));
 
   // ── 问答（阶段 2）──────────────────────────────────────────
   // 这是阶段 0 就写好的 Agent 内核第一次接进 HTTP 层。
@@ -1659,6 +1666,64 @@ export function createApp(deps: AppDeps): Hono<Env> {
   // 权限已收口（阶段 4 欠账 2）：路由要求 `askRecord.read.own`，
   // 行级范围是 own + all —— 成员看自己的，导师与管理员看全部
   // （用户 2026-10-11 拍板）。提问原文不脱敏，所以这一档必须收在 SQL 里。
+  function noteOwner(c: Context<Env>) {
+    const user = c.get('user');
+    if (user === null) throw new AppError('unauthenticated', '请先登录。');
+    c.header('Cache-Control', 'private, no-store');
+    return user;
+  }
+
+  app.get('/api/v1/research-notes', (c) => {
+    const owner = noteOwner(c);
+    const query = c.req.query('q')?.trim() ?? '';
+    if (query.length > 160) throw new AppError('invalid_argument', '查找词不能超过 160 字。');
+    const offset = parseRetrievalNumber(c.req.query('offset'), 0, 0, 100_000);
+    return c.json(listResearchNotes(deps.db, owner.id, query, 40, offset));
+  });
+
+  app.post('/api/v1/research-notes', async (c) => {
+    const owner = noteOwner(c);
+    const input = parseCreateNote(await readJsonBody(c));
+    return c.json(presentResearchNote(deps.db, owner, createResearchNote(deps.db, owner.id, input)), 201);
+  });
+
+  app.get('/api/v1/research-notes/:id', (c) => {
+    const owner = noteOwner(c);
+    return c.json(presentResearchNote(deps.db, owner, readResearchNote(deps.db, owner.id, c.req.param('id'))));
+  });
+
+  app.patch('/api/v1/research-notes/:id', async (c) => {
+    const owner = noteOwner(c);
+    const input = parseUpdateNote(await readJsonBody(c));
+    return c.json(presentResearchNote(deps.db, owner, updateResearchNote(deps.db, owner.id, c.req.param('id'), input)));
+  });
+
+  app.get('/api/v1/research-notes/:id/runs/:runId/sources/:citationId', (c) => {
+    const owner = noteOwner(c);
+    return c.json(readResearchNoteDocument(deps.db, owner, c.req.param('id'), c.req.param('runId'), c.req.param('citationId')));
+  });
+
+  app.get('/api/v1/research-notes/:id/runs/:runId/sources/:citationId/record', (c) => {
+    const owner = noteOwner(c);
+    return c.json(readResearchNoteRecord(deps.db, owner, c.req.param('id'), c.req.param('runId'), c.req.param('citationId')));
+  });
+
+  app.get('/api/v1/research-notes/:id/runs/:runId/sources/:citationId/file', (c) => {
+    const owner = noteOwner(c);
+    function authorizedDocumentId() {
+      const context = readResearchNoteDocument(deps.db, owner, c.req.param('id'), c.req.param('runId'), c.req.param('citationId'));
+      if (context.archivedIndexVersion !== undefined) throw new AppError('not_found', '此历史引用仅保留原文片段。');
+      return context.document.id;
+    }
+    return serveDocumentFile(c, authorizedDocumentId(), authorizedDocumentId);
+  });
+
+  app.delete('/api/v1/research-notes/:id', (c) => {
+    const owner = noteOwner(c);
+    deleteResearchNote(deps.db, owner.id, c.req.param('id'), noteRevision(c.req.query('revision')));
+    return c.json({ deleted: true });
+  });
+
   app.get('/api/v1/ask-records', (c) => {
     const limit = parseLimit(c.req.query('limit'), 20, 200);
     const offset = parseOffset(c.req.query('offset'));
@@ -2671,21 +2736,10 @@ export function createApp(deps: AppDeps): Hono<Env> {
   // 读权限已收口（阶段 4 欠账 5 的读侧）：需要 `code.read`。
   //
   app.get('/api/v1/code-assets/:id/evidence', (c) => {
-    const asset = getCodeAsset(deps.db, c.req.param('id'));
-    if (asset === null) throw new AppError('not_found', '没有这条数据集记录。');
-    const fields = [
-      { label: '名称', value: asset.name },
-      { label: '更新时点', value: asset.updatedAt },
-    ];
-    if (asset.profile?.version) fields.push({ label: '登记版本', value: asset.profile.version });
-    if (asset.profile?.format) fields.push({ label: '数据格式', value: asset.profile.format });
-    if (asset.profile?.scale) fields.push({ label: '规模', value: asset.profile.scale });
+    const evidence = getCodeAssetEvidence(deps.db, c.req.param('id'));
+    if (evidence === null) throw new AppError('not_found', '没有这条数据集记录。');
     c.header('Cache-Control', 'no-store');
-    return c.json({
-      kind: 'record', recordType: 'M-CODE', recordId: asset.id, sourceVersion: asset.updatedAt,
-      recordTitle: asset.name, recordUpdatedAt: asset.updatedAt, queryTime: new Date().toISOString(),
-      excerpt: '', fields, matchedBy: ['structured'],
-    } satisfies RecordRetrievalHit);
+    return c.json(evidence);
   });
 
   // 【列表为什么不按登记人过滤】数据集登记的目的就是"让全实验室知道数据在哪" ——
