@@ -513,21 +513,29 @@
     {
       "issue": 8,
       "stable_id": "V2-08",
-      "state": "in_progress",
+      "state": "awaiting_merge_approval",
       "owner_role": "Conversation context",
       "owner": "coordinator",
       "branch": "codex/v2-08-context",
       "worktree_alias": "KnowPilot-V2-08",
       "completed_nodes": [
-        "8.ready"
+        "8.ready",
+        "8.N1",
+        "8.N2",
+        "8.N3"
       ],
-      "prs": [],
-      "head_sha": null,
+      "prs": [
+        28
+      ],
+      "head_sha": "71658d6bb2052ead92850361e3082fc10f8f8e00",
       "merge_sha": null,
       "acceptance": {
-        "status": "not_run",
-        "evidence": [],
-        "reviewer": null
+        "status": "pre_merge_passed",
+        "evidence": [
+          "docs/plans/v2/V2-08.md",
+          "docs/plans/v2/gates/G2.md"
+        ],
+        "reviewer": "independent specification and implementation reviews"
       },
       "release_node": "8.released",
       "base_sha": "aa0fe140a9678a388472a2ab932f8e72be9f7d74",
@@ -641,7 +649,8 @@
         "13-B.5.pre",
         "13-B.7.pre",
         "13-B.5.post",
-        "13-B.7.post"
+        "13-B.7.post",
+        "13-B.8.pre"
       ],
       "prs": [
         16
@@ -1103,6 +1112,26 @@
                   "passed_assertions": 28,
                   "total_assertions": 30
                 }
+              }
+            },
+            "8": {
+              "pr": 28,
+              "pre": {
+                "status": "passed",
+                "pull_request_head": "71658d6bb2052ead92850361e3082fc10f8f8e00",
+                "verified_release_tree_sha": "06f34258d743bbe41309ee35a10368ef44987eed",
+                "commands_passed": 20,
+                "commands_total": 21,
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30
+                }
+              },
+              "post": {
+                "status": "not_run"
               }
             }
           }
