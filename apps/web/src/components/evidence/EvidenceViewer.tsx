@@ -7,10 +7,12 @@ import { Link } from 'react-router-dom';
 import { fmtDateTime } from '../../format.ts';
 import { Modal } from '../Modal.tsx';
 import { loadEvidence, resolveEvidenceSource, supportsEvidence, type EvidenceReaderSources, type LoadedEvidence } from './evidence-reader.ts';
+import { PdfPreview, type PdfView } from './PdfPreview.tsx';
 import './evidence-viewer.css';
 
 const dockWidth = '(min-width: 1080px)';
 const readerTitle = '证据阅读器';
+const initialPdfView: PdfView = { page: null, zoom: 100 };
 function subscribeWidth(change: () => void) {
   const media = window.matchMedia(dockWidth);
   media.addEventListener('change', change);
@@ -77,10 +79,44 @@ function VersionNote({ version }: { version: 'matched' | 'changed' | 'unknown' }
   </p>;
 }
 
-function EvidenceContent({ evidence, recordHref }: { evidence: LoadedEvidence; recordHref: string | undefined }) {
+interface DocumentPreview {
+  view: PdfView | null;
+  onViewChange: (view: PdfView | null) => void;
+}
+
+function searchPdfQuote(chunkText: string, excerpt: string): string | null {
+  const text = chunkText.replace(/\s+/gu, ' ');
+  const display = excerpt.replace(/\s+/gu, ' ').trim();
+  const target = text.includes(display) ? display : display.replace(/^…|…$/gu, '').trim();
+  if (target === '') return null;
+  const start = text.indexOf(target);
+  if (start < 0 || text.indexOf(target, start + 1) !== -1) return null;
+
+  // The search fallback can clip a word without an ellipsis.
+  const wordStart = /^[\p{Script=Latin}\p{Number}\p{Mark}]+/u;
+  const wordEnd = /[\p{Script=Latin}\p{Number}\p{Mark}]+$/u;
+  const end = start + target.length;
+  const leading = wordStart.test(target) ? text.slice(0, start).match(wordEnd)?.[0] ?? '' : '';
+  const trailing = wordEnd.test(target) ? text.slice(end).match(wordStart)?.[0] ?? '' : '';
+  return leading + target + trailing;
+}
+
+function documentPdfQuote(evidence: Extract<LoadedEvidence, { kind: 'document' }>, source: Reader['source']) {
+  const { context: { chunk }, highlight } = evidence;
+  if (source.quote === undefined) return chunk.text;
+  if (source.request.citation === undefined) return searchPdfQuote(chunk.text, source.quote);
+  return highlight === null ? null : chunk.text.slice(...highlight);
+}
+
+function EvidenceContent({ evidence, readerSource, preview }: {
+  evidence: LoadedEvidence;
+  readerSource: Reader['source'];
+  preview: DocumentPreview;
+}) {
   if (evidence.kind === 'unavailable') return <p role="status">此证据不可读取，可能已失效或当前账号无权查看。</p>;
   if (evidence.kind === 'record') {
     const { hit, version } = evidence;
+    const { recordHref } = readerSource;
     return <>
       <h3>{hit.recordTitle}</h3>
       <p className="dim">{RECORD_TYPE_LABELS[hit.recordType]} · 最近读取 {fmtDateTime(hit.queryTime)}</p>
@@ -96,23 +132,35 @@ function EvidenceContent({ evidence, recordHref }: { evidence: LoadedEvidence; r
   }
   const { context, highlight, version } = evidence;
   const { document: source, chunk, siblings } = context;
+  const fileUrl = `/api/v1/documents/${encodeURIComponent(source.id)}/file`;
+  const isPdf = source.fileName === null ? chunk.page !== null : /\.pdf$/iu.test(source.fileName);
+  const pageLabel = chunk.page === null ? '无页码' : isPdf ? `PDF 物理页 ${chunk.page}` : `第 ${chunk.page} 页`;
+  const canPreview = context.archivedIndexVersion === undefined && version === 'matched';
   const excerpt = highlight === null ? chunk.text : <>
     {chunk.text.slice(0, highlight[0])}<mark>{chunk.text.slice(...highlight)}</mark>{chunk.text.slice(highlight[1])}
   </>;
   return <>
     <h3>{source.title}</h3>
-    <p className="dim">{MATERIAL_LABELS[source.material]} · {chunk.page === null ? '无页码' : `第 ${chunk.page} 页`}
+    <p className="dim">{MATERIAL_LABELS[source.material]} · {pageLabel}
       {chunk.sectionPath.length > 0 && ` · ${formatSectionPath(chunk.sectionPath)}`}</p>
     {context.archivedIndexVersion !== undefined &&
       <p className="evidence-reader-note" role="status">索引 v{context.archivedIndexVersion} 的历史原文。仅显示当时保留的引用片段。</p>}
     <VersionNote version={version} />
+    {isPdf && (canPreview ? <>
+      <button type="button" className="link-btn" aria-expanded={preview.view !== null} onClick={() =>
+        preview.onViewChange(preview.view === null ? initialPdfView : null)}>
+        {preview.view === null ? '打开 PDF 预览' : '关闭 PDF 预览'}
+      </button>
+      {preview.view !== null && <PdfPreview fileUrl={fileUrl} citedPage={chunk.page} quote={documentPdfQuote(evidence, readerSource)}
+        view={preview.view} onViewChange={preview.onViewChange} />}
+    </> : <p className="dim">此引用无法核对当前 PDF 的页码。可查看保留片段或下载原件。</p>)}
     {highlight === null && <p className="dim">未能精确定位摘录，已显示授权原文片段。</p>}
     <p className="evidence-reader-excerpt">{excerpt}</p>
     {context.archivedIndexVersion === undefined && siblings.length > 1 && <details>
       <summary>同页上下文</summary>
       {siblings.map((item) => <p className="evidence-reader-excerpt" key={item.id}>{item.text}</p>)}
     </details>}
-    <a href={`/api/v1/documents/${encodeURIComponent(source.id)}/file`} className="link-btn">
+    <a href={fileUrl} className="link-btn">
       {context.archivedIndexVersion === undefined ? '下载原件' : '下载当前原件'}
     </a>
   </>;
@@ -120,7 +168,11 @@ function EvidenceContent({ evidence, recordHref }: { evidence: LoadedEvidence; r
 
 type RenderDocument = (evidence: Extract<LoadedEvidence, { kind: 'document' }>) => ReactNode;
 
-function EvidencePane({ source, renderDocument }: { source: Reader['source']; renderDocument?: RenderDocument }) {
+function EvidencePane({ source, renderDocument, preview }: {
+  source: Reader['source'];
+  renderDocument?: RenderDocument;
+  preview: DocumentPreview;
+}) {
   const [loaded, setLoaded] = useState<{ source: Reader['source']; evidence: LoadedEvidence } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -131,7 +183,7 @@ function EvidencePane({ source, renderDocument }: { source: Reader['source']; re
   }, [source]);
   return loaded?.source === source
     ? ((loaded.evidence.kind === 'document' ? renderDocument?.(loaded.evidence) : null) ??
-      <EvidenceContent evidence={loaded.evidence} recordHref={source.recordHref} />)
+      <EvidenceContent evidence={loaded.evidence} readerSource={source} preview={preview} />)
     : <p role="status">正在读取证据…</p>;
 }
 
@@ -167,9 +219,13 @@ export function EvidenceViewer({ reader, children, renderDocument }: {
   const titleId = useId();
   const closeButton = useRef<HTMLButtonElement>(null);
   const [expanded, setExpanded] = useState(false);
+  const [pdfView, setPdfView] = useState<{ key: number; view: PdfView } | null>(null);
   const opened = reader !== null;
   useEffect(() => {
-    if (!opened) setExpanded(false);
+    if (!opened) {
+      setExpanded(false);
+      setPdfView(null);
+    }
   }, [opened]);
   const dialog = opened && (!docked || expanded);
 
@@ -205,7 +261,10 @@ export function EvidenceViewer({ reader, children, renderDocument }: {
         {related.map(({ index }, position) => <option key={index} value={position}>第 {position + 1} 条</option>)}
       </select>
     </label>}
-    <EvidencePane key={reader.key} source={reader.source} {...(renderDocument === undefined ? {} : { renderDocument })} />
+    <EvidencePane key={reader.key} source={reader.source} preview={{
+      view: pdfView === null ? null : pdfView.key === reader.key ? pdfView.view : initialPdfView,
+      onViewChange: (view) => setPdfView(view === null ? null : { key: reader.key, view }),
+    }} {...(renderDocument === undefined ? {} : { renderDocument })} />
   </div>;
 
   return <div className={reader !== null && docked ? 'evidence-reader-workspace has-evidence-reader' : 'evidence-reader-workspace'}>
