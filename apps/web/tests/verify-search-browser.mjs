@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -588,6 +588,23 @@ try {
   await noteEditor.getByRole('heading', { name: '合成笔记编辑后的标题' }).waitFor();
   await noteEditor.getByText('笔记已保存。', { exact: true }).waitFor();
   assert(await saveNote.evaluate((button) => button === document.activeElement));
+
+  async function downloadedExport(button, extension) {
+    const [download] = await Promise.all([
+      notePage.waitForEvent('download'), noteEditor.getByRole('button', { name: button, exact: true }).click(),
+    ]);
+    assert(download.suggestedFilename().endsWith(extension));
+    return { filename: download.suggestedFilename(), bytes: await readFile(await download.path()) };
+  }
+  const exportedMarkdown = await downloadedExport('下载 Markdown', '.md');
+  assert.equal(exportedMarkdown.filename, '合成笔记编辑后的标题.md');
+  assert(exportedMarkdown.bytes.toString('utf8').includes(editedBody));
+  const exportedPdf = await downloadedExport('下载 PDF', '.pdf');
+  assert.equal(exportedPdf.filename, '合成笔记编辑后的标题.pdf');
+  assert.equal(exportedPdf.bytes.subarray(0, 5).toString('ascii'), '%PDF-');
+  await noteEditor.getByText('已下载当前保存的笔记。', { exact: true }).waitFor();
+  await noteEditor.screenshot({ path: join(output, 'research-notes-export.png') });
+  console.log('PASS note export downloads saved UTF-8 Markdown and local PDF from the authenticated editor');
   await notePage.reload();
   await noteBody.waitFor();
   assert.equal(await noteBody.inputValue(), editedBody);
@@ -745,6 +762,11 @@ try {
   const deniedFile = await notePage.request.get(origin + noteFileUrl);
   assert.equal(deniedFile.status(), 404);
   assert(!(await deniedFile.text()).includes(noteSourceText));
+  const restrictedExport = await downloadedExport('下载 Markdown', '.md');
+  const restrictedContent = restrictedExport.bytes.toString('utf8');
+  assert(!restrictedContent.includes(noteDocumentTitle) && !restrictedContent.includes(editedBody));
+  await noteEditor.getByText(/文件仅包含来源状态/u).waitFor();
+  console.log('PASS loaded editor rechecks a withdrawn source when exporting');
   await sourceControl.first().click();
   await noteReader.getByText(/此证据不可读取/).waitFor();
   assert.equal(await noteReader.getByText(noteSourceText, { exact: true }).count(), 0);
@@ -753,6 +775,9 @@ try {
   assert.equal(await sourceControl.count(), 0);
   await noteEditor.getByRole('link', { name: '打开检索选取研究资料' }).waitFor();
   await notePage.setViewportSize({ width: 390, height: 844 });
+  // Chromium can report the new viewport before applying the compact sidebar styles.
+  await notePage.waitForFunction(() =>
+    (document.querySelector('.sidebar')?.getBoundingClientRect().width ?? Infinity) <= 64);
   await assertNoHorizontalOverflow(notePage);
   await notePage.screenshot({ path: join(output, 'research-notes-narrow-unavailable.png') });
   const beforeSearch = calls.length;

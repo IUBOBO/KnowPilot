@@ -264,6 +264,7 @@ import { getDummyHash, verifyPassword } from './auth/password.ts';
 import { LoginRateLimiter } from './auth/rate-limit.ts';
 import { ruleFor, verifyRouteCoverage } from './auth/routes.ts';
 import { askRecordScope, knowledgeScope, submissionScope, uploadScope } from './auth/scope.ts';
+import { researchNoteExportResponse } from './research-notes/export/response.ts';
 import { noteRevision, parseCreateNote, parseUpdateNote } from './research-notes/input.ts';
 import { createResearchNote, deleteResearchNote, listResearchNotes, readResearchNote, updateResearchNote } from './research-notes/repo.ts';
 import { presentResearchNote, readResearchNoteDocument, readResearchNoteRecord } from './research-notes/service.ts';
@@ -1686,6 +1687,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const input = parseCreateNote(await readJsonBody(c));
     return c.json(presentResearchNote(deps.db, owner, createResearchNote(deps.db, owner.id, input)), 201);
   });
+
+  app.get('/api/v1/research-notes/:id/export/:format', (c) =>
+    researchNoteExportResponse(deps.db, noteOwner(c), c.req.param('id'), c.req.param('format'), contentDisposition));
 
   app.get('/api/v1/research-notes/:id', (c) => {
     const owner = noteOwner(c);
