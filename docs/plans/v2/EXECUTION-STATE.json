@@ -223,17 +223,25 @@
     },
     {
       "id": "G3",
-      "status": "in_progress",
+      "status": "passed",
       "report": "docs/plans/v2/gates/G3.md",
-      "merge_sha": null,
+      "merge_sha": "ac2a9a4e3de439f7f5ff67a085348371bc6e65b8",
       "acceptance": {
-        "status": "not_run",
-        "reviewer": null,
-        "evidence": []
+        "status": "passed",
+        "reviewer": "coordinator and independent feature reviews",
+        "evidence": [
+          "docs/plans/v2/gates/G3.md",
+          "docs/plans/v2/V2-10.md",
+          "docs/plans/v2/V2-11.md",
+          "docs/plans/v2/V2-13.md"
+        ],
+        "reason": "Same-note browser flow and migration, permission, revocation and unpublished-index regressions passed on exact merged code. Coordinator gates publication through the reviewed records PR."
       },
       "blockers": [],
       "feature_merge_shas": {
-        "9": "33d52b998423970a29871c273cabad05665e90f0"
+        "9": "33d52b998423970a29871c273cabad05665e90f0",
+        "10": "698563be60ea19ebe395c7b3266416c8ad27c66a",
+        "11": "ac2a9a4e3de439f7f5ff67a085348371bc6e65b8"
       },
       "integration_candidate": {
         "tree_sha": "38edd02d596e1f2928905a18a23f3ab7175e7af0",
@@ -245,6 +253,31 @@
           "drafts-check",
           "notes browser"
         ]
+      },
+      "completed_nodes": [
+        "G3.pass"
+      ],
+      "next_phase_ready_nodes": [
+        "12.ready"
+      ],
+      "integration_acceptance": {
+        "status": "passed",
+        "merge_sha": "ac2a9a4e3de439f7f5ff67a085348371bc6e65b8",
+        "tree_sha": "08eb54efe728d2aec78d60d8e61bbc37c21b321b",
+        "same_note_publication": "passed",
+        "sqlite_v36_restore": "passed",
+        "historical_failure": {
+          "command": "verify-next-actions",
+          "exit": 1,
+          "total_assertions": 30,
+          "passed_assertions": 28,
+          "baseline_sha": "819315c7921796508d35e495cbc4af2b94786fe3"
+        },
+        "model_checks": "not_run",
+        "evidence_hashes": {
+          "browser.log": "ff4cee578b9e89bb13fdb7227ab0292722598c2b832f2354be0275b4884baf47",
+          "restore-results.json": "70c89bc2a1438e6310cbc254984df73ad8744a4063943fbc95068fc49bb79bfa"
+        }
       }
     },
     {
@@ -630,7 +663,7 @@
     {
       "issue": 10,
       "stable_id": "V2-10",
-      "state": "in_progress",
+      "state": "accepted",
       "owner_role": "Notes/export",
       "owner": "g3_export",
       "branch": "codex/v2-10-note-export",
@@ -639,24 +672,27 @@
         "10.ready",
         "10.N1",
         "10.N2",
-        "10.N3"
+        "10.N3",
+        "10.merged",
+        "10.released"
       ],
       "prs": [
         32
       ],
       "head_sha": "6ca8dc21cec044c5f1647cd9f5f2a9b8566406ab",
-      "merge_sha": null,
+      "merge_sha": "698563be60ea19ebe395c7b3266416c8ad27c66a",
       "acceptance": {
-        "status": "awaiting_merge_approval",
+        "status": "passed",
         "evidence": [
           "docs/plans/v2/V2-10.md",
-          "docs/plans/v2/V2-13.md"
+          "docs/plans/v2/V2-13.md",
+          "docs/plans/v2/gates/G3.md"
         ],
-        "reviewer": "independent specification and implementation reviews",
-        "reason": "13-B.10.pre passed. User approval and the exact merge-SHA regression remain pending."
+        "reviewer": "independent pre-merge reviews and coordinator exact-SHA evidence",
+        "reason": "13-B.10.post passed with the recorded legacy failure and offline model checks."
       },
       "release_node": "10.released",
-      "base_sha": "33d52b998423970a29871c273cabad05665e90f0",
+      "base_sha": "7d9c5fbe5b7a469d06a5429182f4dbd65d4c71d6",
       "dispatch": {
         "released_by": [
           "G2.pass",
@@ -665,12 +701,13 @@
         "baseline_sha": "33d52b998423970a29871c273cabad05665e90f0",
         "test_environment": "isolated SQLite v37 and localhost"
       },
-      "issue_state": "open"
+      "issue_state": "closed",
+      "issue_closed_at": "2026-11-27T02:45:43Z"
     },
     {
       "issue": 11,
       "stable_id": "V2-11",
-      "state": "in_progress",
+      "state": "accepted",
       "owner_role": "Knowledge/drafts",
       "owner": "g3_drafts",
       "branch": "codex/v2-11-draft-sources",
@@ -679,24 +716,27 @@
         "11.ready",
         "11.N1",
         "11.N2",
-        "11.N3"
+        "11.N3",
+        "11.merged",
+        "11.released"
       ],
       "prs": [
         33
       ],
-      "head_sha": "5bbe376ea5a45e655724ec53e795d9524b66c054",
-      "merge_sha": null,
+      "head_sha": "b4df9585b08c3d4ef99abdec6a586736c80f335c",
+      "merge_sha": "ac2a9a4e3de439f7f5ff67a085348371bc6e65b8",
       "acceptance": {
-        "status": "awaiting_merge_approval",
+        "status": "passed",
         "evidence": [
           "docs/plans/v2/V2-11.md",
-          "docs/plans/v2/V2-13.md"
+          "docs/plans/v2/V2-13.md",
+          "docs/plans/v2/gates/G3.md"
         ],
-        "reviewer": "independent specification and implementation reviews",
-        "reason": "13-B.11.pre passed. User approval and the exact merge-SHA regression remain pending."
+        "reviewer": "independent pre-merge reviews and coordinator exact-SHA evidence",
+        "reason": "13-B.11.post passed with the recorded legacy failure and offline model checks."
       },
       "release_node": "11.released",
-      "base_sha": "33d52b998423970a29871c273cabad05665e90f0",
+      "base_sha": "698563be60ea19ebe395c7b3266416c8ad27c66a",
       "dispatch": {
         "released_by": [
           "G2.pass",
@@ -705,7 +745,8 @@
         "baseline_sha": "33d52b998423970a29871c273cabad05665e90f0",
         "test_environment": "isolated SQLite v37 and localhost"
       },
-      "issue_state": "open"
+      "issue_state": "closed",
+      "issue_closed_at": "2026-11-27T02:45:54Z"
     },
     {
       "issue": 12,
@@ -756,7 +797,9 @@
         "13-B.9.pre",
         "13-B.9.post",
         "13-B.10.pre",
-        "13-B.11.pre"
+        "13-B.11.pre",
+        "13-B.10.post",
+        "13-B.11.post"
       ],
       "prs": [
         16
@@ -1318,7 +1361,24 @@
                 }
               },
               "post": {
-                "status": "not_run"
+                "status": "passed",
+                "merge_sha": "698563be60ea19ebe395c7b3266416c8ad27c66a",
+                "merge_tree_sha": "5aca86878bb4d503d4057e6decdf64ab04019790",
+                "commands_passed": 24,
+                "commands_total": 25,
+                "evidence_hashes": {
+                  "review-results.json": "08b0ab5239eccc05230e439addf3ee77598bf87bbd399213dbf4a92bb74e6790",
+                  "targeted.json": "9cc8ce46d9893b68369f54953b5d5e29f335509bca222fa6ede548e6fe97c740",
+                  "blockers.json": "5358c339f41caa9b071220427be3ca1b77599d314c5f5ec0f2b6cc99deaedc46"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "total_assertions": 30,
+                  "passed_assertions": 28,
+                  "baseline_sha": "819315c7921796508d35e495cbc4af2b94786fe3"
+                }
               }
             },
             "11": {
@@ -1342,10 +1402,42 @@
                   "exit": 1,
                   "passed_assertions": 28,
                   "total_assertions": 30
+                },
+                "replay_after_main_sync": {
+                  "status": "passed",
+                  "base_sha": "698563be60ea19ebe395c7b3266416c8ad27c66a",
+                  "pull_request_head": "b4df9585b08c3d4ef99abdec6a586736c80f335c",
+                  "tested_local_sha": "aec2e85d561057951bdf0b45dae683f58a8cfbbf",
+                  "verified_release_tree_sha": "08eb54efe728d2aec78d60d8e61bbc37c21b321b",
+                  "commands_passed": 26,
+                  "commands_total": 27,
+                  "evidence_hashes": {
+                    "review-results.json": "f9dfd0f5feac7dae44e92f81625da468301317748bb7e352172d4d3fca2497a5",
+                    "targeted.json": "bbc52f3d251daeac51834bbc475dd04dc05bb6e35911db5db23847bae5f9b841",
+                    "blockers.json": "acdae4731c4f7badd00b1d67f5835d962433b47a6c501ae8d4c82bf927264ae8"
+                  },
+                  "model_checks": "not_run"
                 }
               },
               "post": {
-                "status": "not_run"
+                "status": "passed",
+                "merge_sha": "ac2a9a4e3de439f7f5ff67a085348371bc6e65b8",
+                "merge_tree_sha": "08eb54efe728d2aec78d60d8e61bbc37c21b321b",
+                "commands_passed": 26,
+                "commands_total": 27,
+                "evidence_hashes": {
+                  "review-results.json": "319fc864cedb8208db7b3137a5b6f20e7c601e8e6f28bfd16e7fe25a411ba872",
+                  "targeted.json": "eb901993aac8cb35396ff7537506eb19df6a6df7089883d86e16fe75080bff58",
+                  "blockers.json": "1e7c9620dba0380c991e2e1b5280907602e14a39e2d9498fd6e7a8c259d2f878"
+                },
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "total_assertions": 30,
+                  "passed_assertions": 28,
+                  "baseline_sha": "819315c7921796508d35e495cbc4af2b94786fe3"
+                }
               }
             }
           }
@@ -1357,5 +1449,5 @@
       }
     }
   ],
-  "development_baseline_sha": "33d52b998423970a29871c273cabad05665e90f0"
+  "development_baseline_sha": "ac2a9a4e3de439f7f5ff67a085348371bc6e65b8"
 }
