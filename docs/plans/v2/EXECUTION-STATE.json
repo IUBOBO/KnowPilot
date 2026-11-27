@@ -892,7 +892,7 @@
           "docs/plans/v2/gates/G5.md"
         ],
         "reviewer": null,
-        "reason": "13-A and 13-B offline evidence recorded. G5-A ran and awaits evidence review. Final 13-C and G5 acceptance remain pending."
+        "reason": "13-A and 13-B offline evidence recorded. The user confirmed the G5-A manual test overall. G5-B is user-owned and pending results. Final 13-C and G5 acceptance remain pending."
       },
       "release_node": "G5.pass",
       "phases": {
@@ -1651,14 +1651,14 @@
             "11.released",
             "12.released"
           ],
-          "scope": "G5-A offline evidence awaiting review; G5-B requires separate authorization",
+          "scope": "G5-A manual overall acceptance confirmed by user; G5-B user verification and results pending",
           "g5_b_model_checks": "not_run",
           "stage_record_pr": 36,
           "branch": "codex/g5-offline-eval",
           "worktree_alias": "KnowPilot-V2-G5",
           "review_status": "pending",
           "g5_a": {
-            "status": "executed_review_pending",
+            "status": "recorded",
             "tested_main_sha": "663792ba1c59855b64829903a3df29c0ada3555d",
             "tested_tree_sha": "695cc39162b667f02ef279ce7e62bc0b8acd0366",
             "tracked_worktree_clean_before_both_runs": true,
@@ -1702,20 +1702,36 @@
             "local_evidence_archive_sha256": "eb0cc2808bdba055b3482bcedc7e1f705daed0d16bf686af1871d2879589452a",
             "timed_manifest_sha256": "a5d1e33b4de5fdeb4fa0a83f4f1de9976b58c2774f922434c41cd2bd47ae6f60",
             "original_manifest_sha256": "1fc80e8dbfc274c32eec878a7420c87184b832928f8fcf4843e508de7f7d0d51",
-            "report": "docs/plans/v2/gates/G5.md"
+            "report": "docs/plans/v2/gates/G5.md",
+            "evidence_pr": 37,
+            "evidence_merge_sha": "756d221de308889e5f5ef44face903518c0ed058",
+            "manual_acceptance": {
+              "status": "passed",
+              "reviewer": "user",
+              "scope": "overall",
+              "feedback_recorded_on": "2026-11-27",
+              "unconfirmed_case_results": "blank",
+              "automated_results_changed": false,
+              "evidence": "docs/plans/v2/gates/G5.md#g5-a-人工确认"
+            }
           },
           "g5_b": {
             "status": "not_run",
-            "approval": "pending",
+            "verification_owner": "user",
+            "codex_automation": "disabled",
+            "result_status": "pending_user_backfill",
             "checks": [
               "GC-08",
               "GC-09",
               "BGE-M3"
             ],
-            "cloud_budget_max_requests": 24,
-            "cloud_budget_max_usd": 0.1,
-            "local_max_minutes": 30,
-            "local_disk_growth_max_gib": 2
+            "result_template": "docs/plans/v2/gates/G5.md#逐项回填",
+            "codex_cloud_preflight": {
+              "requests": 0,
+              "input_tokens": 0,
+              "output_tokens": 0,
+              "cost_usd": 0
+            }
           }
         }
       }
