@@ -280,27 +280,33 @@
         }
       }
     },
-{
+    {
       "id": "G4",
-      "status": "in_progress",
+      "status": "passed",
       "report": "docs/plans/v2/gates/G4.md",
       "merge_sha": "43723bd4cc354e71661ac791f456afddfe7f6b20",
       "acceptance": {
-        "status": "pending",
-        "reviewer": null,
+        "status": "passed",
+        "reviewer": "user",
+        "approval_recorded_at": "2026-11-27T09:03:20Z",
+        "scope": "offline",
         "evidence": [
           "docs/plans/v2/gates/G4.md",
           "docs/plans/v2/V2-12.md",
           "docs/plans/v2/V2-13.md"
         ],
-        "reason": "G4 offline evidence passed. User confirmation is required before G4.pass and 13-C dispatch."
+        "reason": "User reviewed the G4 evidence and approved offline acceptance on the actual PR #35 merge SHA. Real model and BGE-M3 checks remain NOT_RUN."
       },
       "blockers": [],
       "feature_merge_shas": {
         "12": "43723bd4cc354e71661ac791f456afddfe7f6b20"
       },
-      "completed_nodes": [],
-      "next_phase_ready_nodes": [],
+      "completed_nodes": [
+        "G4.pass"
+      ],
+      "next_phase_ready_nodes": [
+        "13-C.run"
+      ],
       "integration_acceptance": {
         "status": "passed",
         "merge_sha": "43723bd4cc354e71661ac791f456afddfe7f6b20",
@@ -789,7 +795,7 @@
       "issue_state": "closed",
       "issue_closed_at": "2026-11-27T02:45:54Z"
     },
-{
+    {
       "issue": 12,
       "stable_id": "V2-12",
       "state": "accepted",
@@ -1571,7 +1577,8 @@
                   "targeted.json": "89c1b50419a6c0ef8e190c593afb5a932a8b5f620a30bf13f5784877a3ea2ae2",
                   "blockers.json": "195e222b532229d7da806c531a29dedd54999a7dec658955595ac5fc5fa7fd1e",
                   "browser.log": "fbdfe7d837c003d988b9e1637f05bfe74c6bd0069f14dd6e929140620e70eab5",
-                  "migration.log": "7e2421ee02e097e19faf4060bf3cc6d5f0e7e6fc467beb8af963e8e1a0635dc0",
+                  "discovery-http-check.log": "7e2421ee02e097e19faf4060bf3cc6d5f0e7e6fc467beb8af963e8e1a0635dc0",
+                  "notes-migration.log": "cc3242dbd53eb6089072f82df94caa64f264821f58ee4b00ec76edbc36bcbefc",
                   "lifecycle.log": "559772b0ed821459eb0d3e7b402cfda72c5edc62abff313f04a762283fbccb56"
                 },
                 "sqlite_v37_restore": "passed",
@@ -1625,8 +1632,26 @@
           }
         },
         "13-C": {
-          "state": "planned",
-          "acceptance": "not_run"
+          "state": "ready",
+          "acceptance": "not_run",
+          "released_by": [
+            "G4.pass",
+            "1.released",
+            "2.released",
+            "3.full-accepted",
+            "4.released",
+            "5.released",
+            "6.released",
+            "7.released",
+            "8.released",
+            "9.released",
+            "10.released",
+            "11.released",
+            "12.released"
+          ],
+          "scope": "G5-A offline only",
+          "g5_b_model_checks": "not_run",
+          "stage_record_pr": 36
         }
       }
     }
