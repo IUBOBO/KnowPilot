@@ -190,6 +190,7 @@ export const KNOWLEDGE_CLAIM_LABELS = {
   inference: '问答推断',
   unclassified: '待补充来源依据',
   edited: '作者编辑',
+  reviewed_merge: '审核者合并',
 } as const;
 
 export interface KnowledgeDraftDetails {
@@ -202,6 +203,9 @@ export interface KnowledgeDraftDetails {
 }
 
 export interface KnowledgeNote {
+  lifecycleVersion?: 1;
+  lifecycle?: import('./knowledge-discovery.ts').KnowledgeLifecycleReview;
+  replacement?: { kind: 'merge' | 'supersede'; entryId: string; by: string; at: string };
   draftSource?: KnowledgeDraftOrigin;
   draftDetails?: KnowledgeDraftDetails;
   draftSubmitted?: boolean;
@@ -277,6 +281,7 @@ export interface ListKnowledgeEntriesResponse {
 /** GET /api/v1/knowledge/review 的响应体。 */
 export interface KnowledgeReviewQueueResponse {
   items: readonly KnowledgeEntry[];
+  neighbors?: readonly KnowledgeEntry[];
   /** 当前生效的冲突阈值，界面要把它写出来（≥它就会挂起等待裁决）。 */
   threshold: number;
 }
@@ -338,18 +343,20 @@ export interface ResubmitKnowledgeResponse {
  *                旧文档行被删、旧内容从此检索不到）。
  *   reject    —— 驳回本条：新条落 deleted，旧条不动。
  */
-export const KNOWLEDGE_RESOLUTIONS = ['admit', 'supersede', 'reject'] as const;
+export const KNOWLEDGE_RESOLUTIONS = ['admit', 'supersede', 'merge', 'reject'] as const;
 
 export type KnowledgeResolution = (typeof KNOWLEDGE_RESOLUTIONS)[number];
 
 export const KNOWLEDGE_RESOLUTION_LABELS: Record<KnowledgeResolution, string> = {
   admit: '允许并存',
   supersede: '取代已有',
+  merge: '合并发布',
   reject: '驳回本条',
 };
 
 export interface ResolveKnowledgeRequest {
   resolution: KnowledgeResolution;
+  mergedContent?: string;
 }
 
 export interface ResolveKnowledgeResponse {

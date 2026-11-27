@@ -1551,4 +1551,25 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    version: 38,
+    name: 'private-knowledge-discovery',
+    sql: `
+      CREATE TABLE knowledge_discovery_settings (
+        owner_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        enabled INTEGER NOT NULL CHECK (enabled IN (0,1))
+      );
+      CREATE TABLE knowledge_discoveries (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        source_json TEXT NOT NULL,
+        source_version TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending','ignored')),
+        created_at TEXT NOT NULL,
+        UNIQUE (owner_id, fingerprint)
+      );
+      CREATE INDEX idx_knowledge_discoveries_owner_time ON knowledge_discoveries(owner_id, created_at);
+    `,
+  },
 ];

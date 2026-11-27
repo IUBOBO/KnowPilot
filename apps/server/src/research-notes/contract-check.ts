@@ -50,7 +50,9 @@ before.close();
 
 const after = openDb(path);
 assert.equal(after.migration.fromVersion, 36);
-assert.equal(after.migration.toVersion, 37);
+const latestVersion = MIGRATIONS.at(-1)!.version;
+assert.equal(after.migration.toVersion, latestVersion);
+assert.deepEqual(after.migration.applied, MIGRATIONS.filter(({ version }) => version > 36).map(({ version, name }) => `v${version}:${name}`));
 assert.deepEqual(after.db.prepare('SELECT * FROM schema_migrations WHERE version <= 36 ORDER BY version').all(), snapshots);
 assert.deepEqual(after.db.prepare('SELECT * FROM users WHERE id=?').get('owner'), originalUser);
 assert.deepEqual(after.db.prepare('SELECT * FROM documents WHERE id=?').get('old-doc'), originalDoc);
@@ -61,7 +63,7 @@ assert.equal(after.db.prepare('PRAGMA integrity_check').get()?.integrity_check, 
 assert.deepEqual(after.db.prepare('PRAGMA foreign_key_check').all(), []);
 after.db.close();
 const reopen = openDb(path);
-assert.equal(reopen.migration.fromVersion, 37);
+assert.equal(reopen.migration.fromVersion, latestVersion);
 assert.deepEqual(reopen.migration.applied, []);
 reopen.db.close();
-console.log('PASS v36→v37 upgrade, prior rows/checksums, failure rollback/retry, migration idempotence, integrity, private tables and input contract');
+console.log(`PASS v36→v${latestVersion} with v37 note tables, prior rows/checksums, failure rollback/retry, migration idempotence, integrity and private input contract`);

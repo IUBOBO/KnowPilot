@@ -266,6 +266,53 @@ try {
     [...JSON.stringify(context.messages).matchAll(/合成原始读数 (\d+)-\d+/gu)].map((m) => 'search-doc-' + m[1]));
   assert(seen.length > 0);
   assert(seen.every((id) => [firstId, lastId].includes(id)));
+  const beforeDiscoveryPanel = modelCalls.length;
+  const discoveryPage = await makePage(browser, { width: 1200, height: 950 }, session().token);
+  await discoveryPage.goto(origin + '/knowledge');
+  const discovery = discoveryPage.locator('.knowledge-discovery');
+  const summary = discovery.locator(':scope > summary');
+  await summary.getByText('知识建议（1）', { exact: true }).waitFor();
+  assert.equal(await discovery.evaluate((element) => element.open), false);
+  await summary.click();
+  await discovery.getByText('新增 · 问答', { exact: true }).waitFor();
+  await discovery.getByRole('button', { name: '提炼为知识草稿' }).click();
+  const suggestionDialog = discoveryPage.getByRole('dialog', { name: '提炼为知识草稿' });
+  const generateSuggestion = suggestionDialog.getByRole('button', { name: '生成待确认草稿' });
+  assert.equal(await generateSuggestion.isDisabled(), true);
+  assert.equal(modelCalls.length, beforeDiscoveryPanel);
+  await suggestionDialog.getByRole('checkbox').check();
+  const [extracted] = await Promise.all([
+    discoveryPage.waitForResponse((response) => requestPath(response) === '/api/v1/knowledge/drafts'),
+    generateSuggestion.click(),
+  ]);
+  assert.equal(extracted.status(), 201);
+  const extractedEntry = (await extracted.json()).entries[0];
+  assert.equal(extractedEntry.status, 'proposed');
+  assert.equal(extractedEntry.documentId, null);
+  await suggestionDialog.getByRole('link', { name: /预览和编辑/u }).waitFor();
+  await suggestionDialog.getByRole('button', { name: '关闭', exact: true }).last().click();
+  assert.equal(modelCalls.length, beforeDiscoveryPanel + 1);
+  await discovery.getByRole('button', { name: '忽略建议' }).click();
+  await discovery.getByText('暂无待处理建议。', { exact: true }).waitFor();
+  const discoveryToggle = discovery.getByRole('checkbox', { name: '启用主动建议' });
+  const changeDiscovery = async (enabled) => {
+    const [response] = await Promise.all([
+      discoveryPage.waitForResponse((reply) => requestPath(reply) === '/api/v1/knowledge/discovery' &&
+        reply.request().method() === 'PATCH'),
+      discoveryToggle.click(),
+    ]);
+    assert.equal(response.status(), 200);
+    assert.equal((await response.json()).enabled, enabled);
+  };
+  await changeDiscovery(false);
+  await discoveryPage.reload();
+  await discovery.locator(':scope > summary').click();
+  assert.equal(await discoveryToggle.isChecked(), false);
+  await discoveryPage.screenshot({ path: join(output, 'discovery-opt-out.png') });
+  await changeDiscovery(true);
+  assert.equal(modelCalls.length, beforeDiscoveryPanel + 1);
+  await discoveryPage.close();
+  console.log('PASS quiet verified ask, explicit model consent, private draft, ignore and persistent opt-out');
   const initialPins = firstAsk.response.documentScope.documents;
   await selection.getByRole('button', { name: '移除' + docNames.get(lastId), exact: true }).click();
   await desktop.reload();
@@ -993,6 +1040,61 @@ try {
   await notePage.screenshot({ path: join(output, 'knowledge-draft-review.png') });
   assert.deepEqual(pageErrors, []);
   console.log('PASS four browser draft entries, per-action source consent, editor, provenance and manual confirmation');
+
+  const authorSource = [
+    '主题：浏览器合成审核', '项目：模拟项目', '版本：v1', '时间：模拟日期', '条件：模拟常温',
+    '结论：允许标定', '已发布的旧指标 webg4oldprobe。',
+  ].join('\n');
+  async function queueLifecycle(content) {
+    const generated = await notePage.request.post(origin + '/api/v1/knowledge/drafts', {
+      data: { text: content, consentConfirmed: true },
+    });
+    assert.equal(generated.status(), 201);
+    const { groupId, entries } = await generated.json();
+    const decision = await notePage.request.post(origin + '/api/v1/knowledge/groups/' + groupId + '/confirm', {
+      data: { consentConfirmed: true },
+    });
+    assert.equal(decision.status(), 200);
+    const { results } = await decision.json();
+    return { item: entries[0], outcome: results[0].outcome };
+  }
+  const lifecycleOld = await queueLifecycle(authorSource);
+  assert.equal(lifecycleOld.outcome, 'active');
+  const lifecycleNew = await queueLifecycle(authorSource + '\n补充一个合成步骤 webg4pendingprobe。');
+  assert.equal(lifecycleNew.outcome, 'conflicted');
+  assert.equal(db.prepare("SELECT count(*) AS n FROM doc_chunks_fts WHERE doc_chunks_fts MATCH 'webg4pendingprobe'").get().n, 0);
+  const reviewerId = await insertUser(db, 'g4-browser-reviewer', {
+    displayName: '合成知识审核员', role: 'mentor', password: 'fixture-only-not-a-real-password',
+  }, now);
+  const reviewerSession = createSession(db, { userId: reviewerId, now, idleDays: 1, maxDays: 1, ip: null, userAgent: null });
+  const reviewPage = await makePage(browser, { width: 1440, height: 980 }, reviewerSession.token);
+  reviewPage.on('pageerror', (error) => pageErrors.push(error));
+  await reviewPage.goto(origin + '/admin/review');
+  const review = reviewPage.locator('.review-detail');
+  await review.getByText('补充待审核', { exact: true }).waitFor();
+  await review.getByText('来源、版本和正文差异', { exact: true }).click();
+  await review.getByText('新来源 手动文本 · 旧来源 手动文本', { exact: true }).waitFor();
+  await review.getByText('补充一个合成步骤 webg4pendingprobe。', { exact: true }).waitFor();
+  await reviewPage.screenshot({ path: join(output, 'knowledge-lifecycle-review.png') });
+  await review.getByRole('button', { name: '合并发布' }).click();
+  const approval = reviewPage.getByRole('dialog', { name: '合并发布？' });
+  assert.equal(await approval.getByRole('button', { name: '合并发布' }).isDisabled(), true);
+  const reviewedBody = authorSource.replace('已发布的旧指标 webg4oldprobe。', '审核者核对并合并了这两个合成步骤 webg4mergedprobe。');
+  await approval.getByRole('textbox', { name: '已核对的合并正文' }).fill(reviewedBody);
+  const [accepted] = await Promise.all([
+    reviewPage.waitForResponse((response) => requestPath(response) === '/api/v1/knowledge/' + lifecycleNew.item.id + '/resolve'),
+    approval.getByRole('button', { name: '合并发布' }).click(),
+  ]);
+  assert.equal(accepted.status(), 200, await accepted.text());
+  const acceptedEntry = (await accepted.json()).entry;
+  assert.equal(acceptedEntry.note.lifecycle.mode, 'merge');
+  assert.equal(acceptedEntry.content, reviewedBody);
+  assert.equal(db.prepare('SELECT status FROM knowledge_entries WHERE id=?').get(lifecycleOld.item.id).status, 'superseded');
+  assert((await runSearch(notePage, 'webg4mergedprobe', { material: 'knowledge' })).hits.some((hit) => hit.documentId === acceptedEntry.documentId));
+  assert.equal((await runSearch(notePage, 'webg4oldprobe', { material: 'knowledge' })).hits.length, 0);
+  await reviewPage.close();
+  assert.deepEqual(pageErrors, []);
+  console.log('PASS lifecycle reviewer compares provenance and changes, explicitly merges, and publishes the reviewed index');
   console.log('PASS research-note save/edit/selection, run-qualified citations, private search prefill and scoped history, dataset reauthorization, withdrawal and no automatic model call');
 } catch (error) {
   console.error(error);

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageTitle } from '../components/PageTitle.tsx';
 import {
+  KNOWLEDGE_DISCOVERY_LABELS,
   KNOWLEDGE_KIND_LABELS,
+  KNOWLEDGE_MIN_INPUT_CHARS,
+  KNOWLEDGE_MAX_INPUT_CHARS,
   KNOWLEDGE_RESOLUTION_LABELS,
   type KnowledgeEntry,
   type KnowledgeResolution,
   type KnowledgeReviewQueueResponse,
-  type ListKnowledgeEntriesResponse,
   type ResolveKnowledgeResponse,
 } from '@knowpilot/shared';
 import { Link } from 'react-router-dom';
@@ -34,33 +36,24 @@ import { fmtDateTime } from '../format.ts';
  *   （它是作者按过「确认整组」、撞上已有知识之后才产生的，属于已提交）。
  *   于是"代确认整组"这个动作也跟着去掉了：没有待确认的东西可代确认。
  *
- * 【为什么要额外拉一次全部条目】冲突项里带的邻居只有一段 120 字摘要，
- *   而"撤不撤旧的"必须看到它到底写了什么才能决定。所以并发拉一次
- *   `GET /knowledge`（审核者的可见范围就是全部非草案条目），用 id 取回邻居的
- *   完整正文与可跳转的块。取不到时退回摘要并**明说这是摘要** —— 不假装那是全文。
+ * 审核响应按每条待审项目的目标 ID 带回现行正式正文，无需从近期记录中寻找。
  */
 export function KnowledgeReviewPage() {
   const toast = useToast();
 
   const [queue, setQueue] = useState<KnowledgeReviewQueueResponse | null>(null);
-  /** 全部条目，用来把冲突项里的邻居 id 还原成完整正文。 */
-  const [all, setAll] = useState<readonly KnowledgeEntry[]>([]);
   const [listError, setListError] = useState<ApiError | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mergedContent, setMergedContent] = useState('');
   const [dialogError, setDialogError] = useState<string | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
-      // 两个请求并发：它们互不依赖，串行只是白等一个往返。
-      const [review, list] = await Promise.all([
-        apiGet<KnowledgeReviewQueueResponse>('/api/v1/knowledge/review', signal),
-        apiGet<ListKnowledgeEntriesResponse>('/api/v1/knowledge?limit=200', signal),
-      ]);
+      const review = await apiGet<KnowledgeReviewQueueResponse>('/api/v1/knowledge/review', signal);
       setQueue(review);
-      setAll(list.items);
       setListError(null);
     } catch (err) {
       if (isAbort(err)) return;
@@ -74,7 +67,7 @@ export function KnowledgeReviewPage() {
     return () => ac.abort();
   }, [load]);
 
-  const byId = useMemo(() => new Map(all.map((e) => [e.id, e])), [all]);
+  const byId = useMemo(() => new Map((queue?.neighbors ?? []).map((entry) => [entry.id, entry])), [queue]);
 
   const conflicts = queue?.items ?? [];
   const selected = conflicts.find((entry) => entry.id === selectedId) ?? conflicts[0] ?? null;
@@ -86,7 +79,7 @@ export function KnowledgeReviewPage() {
     try {
       await apiPost<ResolveKnowledgeResponse>(
         `/api/v1/knowledge/${encodeURIComponent(pending.entry.id)}/resolve`,
-        { resolution: pending.resolution },
+        { resolution: pending.resolution, ...(pending.resolution === 'merge' ? { mergedContent } : {}) },
       );
       toast.ok(`已裁决：${KNOWLEDGE_RESOLUTION_LABELS[pending.resolution]}。`);
       setPending(null);
@@ -159,6 +152,7 @@ export function KnowledgeReviewPage() {
                 neighbor={selected.neighbor === null ? null : (byId.get(selected.neighbor.entryId) ?? null)}
                 onPick={(resolution) => {
                   setDialogError(null);
+                  setMergedContent('');
                   setPending({ kind: 'resolve', entry: selected, resolution });
                 }}
               />
@@ -175,10 +169,16 @@ export function KnowledgeReviewPage() {
         cancelLabel="取消"
         busy={busy}
         danger={pending !== null && pending.resolution !== 'admit'}
+        confirmDisabled={pending?.resolution === 'merge' && mergedContent.trim().length < KNOWLEDGE_MIN_INPUT_CHARS}
         onConfirm={() => void run()}
         onCancel={() => setPending(null)}
       >
         {pending !== null && <p>{dialogBody(pending.resolution)}</p>}
+        {pending?.resolution === 'merge' && <label className="field">
+          <span>已核对的合并正文</span>
+          <textarea value={mergedContent} onChange={(event) => setMergedContent(event.target.value)}
+            rows={9} maxLength={KNOWLEDGE_MAX_INPUT_CHARS} disabled={busy} />
+        </label>}
         {pending !== null && <p className="dim kb-reject-title">{pending.entry.title}</p>}
         {dialogError !== null && (
           <div className="notice err">
@@ -203,6 +203,7 @@ function dialogBody(resolution: KnowledgeResolution): string {
   if (resolution === 'supersede') {
     return '这条会入库，同时已有的那条会从索引里撤下：它的状态变成「已被取代」，那份文档会被删除，从此检索不到。这个过程不可撤销。';
   }
+  if (resolution === 'merge') return '请根据上一步对照填写合并正文。确认后会发布合并稿并从检索中撤下旧条目，历史内容仍可追溯。';
   return '这条落「已驳回」，不进索引；已有的那条不动。';
 }
 
@@ -223,6 +224,7 @@ function ConflictRow({
   onPick: (resolution: KnowledgeResolution) => void;
 }) {
   const conflict = entry.note?.conflict;
+  const lifecycle = entry.note?.lifecycle;
   const excerpt = entry.neighbor?.excerpt ?? '';
 
   return (
@@ -230,14 +232,14 @@ function ConflictRow({
       <div className="kb-entry-head">
         <span className="kb-kind">{KNOWLEDGE_KIND_LABELS[entry.kind]}</span>
         <span className="kb-entry-title">{entry.title}</span>
-        <span className="pill warn">冲突待裁决</span>
+        <span className="pill warn">{lifecycle === undefined ? '冲突待裁决' : KNOWLEDGE_DISCOVERY_LABELS[lifecycle.kind] + '待审核'}</span>
       </div>
 
       <p className="kb-entry-meta">
         提交人 {entry.createdByName ?? <span className="dim">未记录</span>}
         {' · '}
         {fmtDateTime(entry.observedAt)}
-        {conflict !== undefined && (
+        {conflict !== undefined && lifecycle === undefined && (
           <>
             {' · '}
             相似度 <b>{conflict.score.toFixed(3)}</b>（阈值 {conflict.threshold}，{conflict.model}）
@@ -258,8 +260,7 @@ function ConflictRow({
           <>
             <p className="kb-conflict-body">{excerpt}</p>
             <p className="dim kb-hint">
-              这是入队时留下的 120 字摘要 —— 那一条不在最近 200 条里，取不到全文。
-              裁决前请先去「知识库」确认它写的是什么。
+              这是入队时留下的摘要。当前正式来源不可读取，请核对状态后再处理。
             </p>
           </>
         ) : (
@@ -280,6 +281,7 @@ function ConflictRow({
         )}
       </div>
 
+      {lifecycle !== undefined && <ReviewComparison entry={entry} neighbor={neighbor} />}
       <div className="kb-actions">
         {/* 「取代已有」拿不到对手就点不动：服务端也会拒（见 app.ts 的 resolve），
             但在这里就先说清，别让人点一个必然报错的按钮。 */}
@@ -289,18 +291,49 @@ function ConflictRow({
         <button
           type="button"
           className="link-btn"
-          disabled={conflict === undefined}
+          disabled={conflict === undefined || (lifecycle !== undefined && neighbor === null)}
           onClick={() => onPick('supersede')}
         >
-          {KNOWLEDGE_RESOLUTION_LABELS.supersede}
+          {lifecycle === undefined ? KNOWLEDGE_RESOLUTION_LABELS.supersede : '更新旧知识'}
         </button>
+        {lifecycle !== undefined && <button type="button" className="link-btn"
+          disabled={neighbor === null} onClick={() => onPick('merge')}>
+          {KNOWLEDGE_RESOLUTION_LABELS.merge}
+        </button>}
         <button type="button" className="link-btn" onClick={() => onPick('reject')}>
           {KNOWLEDGE_RESOLUTION_LABELS.reject}
         </button>
-        <span className="dim kb-hint">
+        {lifecycle === undefined && <span className="dim kb-hint">
           允许并存 = 两条都留；取代已有 = 撤下旧的（不可撤销）；驳回本条 = 新的不要。
-        </span>
+        </span>}
       </div>
     </li>
   );
+}
+
+const reviewFields = [
+  ['topic','主题'], ['project','项目'], ['conditions','条件'], ['version','版本'], ['time','适用时间'],
+] as const;
+const sourceLabels = { note: '研究笔记', manual: '手动文本', upload: '上传资料', conversation: '问答来源' } as const;
+
+function ReviewComparison({ entry, neighbor }: { entry: KnowledgeEntry; neighbor: KnowledgeEntry | null }) {
+  const lifecycle = entry.note?.lifecycle;
+  if (lifecycle === undefined) return null;
+  const oldLines = new Set((neighbor?.content ?? '').split('\n').map((line) => line.trim()).filter(Boolean));
+  const newLines = new Set(entry.content.split('\n').map((line) => line.trim()).filter(Boolean));
+  const changes = [
+    { label: '新提交新增', lines: [...newLines].filter((line) => !oldLines.has(line)) },
+    { label: '仅旧条目保留', lines: [...oldLines].filter((line) => !newLines.has(line)) },
+  ];
+  return <details className="kb-conflict">
+    <summary>来源、版本和正文差异</summary>
+    <p>新来源 {sourceLabels[entry.sourceType]} · 旧来源 {neighbor ? sourceLabels[neighbor.sourceType] : '当前不可读取'}</p>
+    <dl>{reviewFields.map(([key,label]) => <div key={key}>
+      <dt>{label}</dt><dd>新 {lifecycle.incomingContext[key] ?? '未记录'} · 旧 {lifecycle.targetContext[key] ?? '未记录'}</dd>
+    </div>)}</dl>
+    {neighbor !== null && changes.map(({ label, lines }) => <div key={label}>
+      <strong>{label}（{lines.length} 行）</strong>
+      <ul>{lines.slice(0, 8).map((line) => <li key={line}>{line}</li>)}</ul>
+    </div>)}
+  </details>;
 }

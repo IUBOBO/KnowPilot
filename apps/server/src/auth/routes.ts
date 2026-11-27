@@ -201,6 +201,9 @@ export const ROUTE_PERMISSIONS: readonly RoutePermission[] = [
   // 自己提交的），所以这里登记最弱的 knowledge.read 即可。
   { method: 'GET', path: '/api/v1/knowledge', rule: 'knowledge.read' },
   // 生成草案：会调模型，是写动作（落一行 group），用 submit。
+  { method: 'GET', path: '/api/v1/knowledge/discovery', rule: 'knowledge.submit' },
+  { method: 'PATCH', path: '/api/v1/knowledge/discovery', rule: 'knowledge.submit' },
+  { method: 'POST', path: '/api/v1/knowledge/discovery/:id/ignore', rule: 'knowledge.submit' },
   { method: 'POST', path: '/api/v1/knowledge/drafts', rule: 'knowledge.submit' },
   { method: 'PATCH', path: '/api/v1/knowledge/:id/draft', rule: 'knowledge.submit' },
   // 审核队列：只有 review 者进得来（队列里是**所有人**的待确认/冲突条目）。

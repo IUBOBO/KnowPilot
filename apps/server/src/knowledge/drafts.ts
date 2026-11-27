@@ -86,7 +86,7 @@ export async function createKnowledgeDrafts(
       sourceType: origin.kind === 'ask' ? 'conversation' : origin.kind === 'document' ? 'upload' : origin.kind,
       sourceId: origin.kind === 'ask' ? null : origin.id, sessionId: origin.kind === 'ask' ? origin.id : null,
       observedAt: origin.at, groupId, createdBy: user.id, note: {
-        draftSource: origin, draftDetails: draftDetails(origin, draft), revision: 1,
+        draftSource: origin, draftDetails: draftDetails(origin, draft), revision: 1, lifecycleVersion: 1,
       },
     })), true);
     return current();
@@ -143,11 +143,15 @@ export function presentKnowledgeEntry(entry: KnowledgeEntry, viewer: AuthUser | 
     sourceAvailable = false;
   }
   if (sourceAvailable && entry.createdById === viewer?.id) return entry;
-  const { draftSource: _, draftDetails, ...remaining } = entry.note;
+  const { draftSource: _, draftDetails, lifecycle, ...remaining } = entry.note;
   const hideContent = !sourceAvailable && entry.status !== 'active';
   return {
     ...entry, sourceId: null, sessionId: null,
     ...(hideContent ? { title: '来源已失效', content: '草稿来源已撤回、更新或不可访问。' } : {}),
-    note: { ...remaining, ...(draftDetails === undefined ? {} : { draftDetails: { claim: draftDetails.claim } }) },
+    note: {
+      ...remaining,
+      ...(lifecycle === undefined ? {} : { lifecycle: sourceAvailable ? lifecycle : { ...lifecycle, incomingContext: {} } }),
+      ...(draftDetails === undefined ? {} : { draftDetails: { claim: draftDetails.claim } }),
+    },
   };
 }
