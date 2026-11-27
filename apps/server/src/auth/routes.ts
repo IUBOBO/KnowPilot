@@ -108,6 +108,7 @@ export const ROUTE_PERMISSIONS: readonly RoutePermission[] = [
   { method: 'GET', path: '/api/v1/research-notes', rule: 'authenticated' },
   { method: 'POST', path: '/api/v1/research-notes', rule: 'authenticated' },
   { method: 'GET', path: '/api/v1/research-notes/:id', rule: 'authenticated' },
+  { method: 'GET', path: '/api/v1/research-notes/:id/export/:format', rule: 'authenticated' },
   { method: 'GET', path: '/api/v1/research-notes/:id/runs/:runId/sources/:citationId', rule: 'authenticated' },
   { method: 'GET', path: '/api/v1/research-notes/:id/runs/:runId/sources/:citationId/file', rule: 'authenticated' },
   { method: 'GET', path: '/api/v1/research-notes/:id/runs/:runId/sources/:citationId/record', rule: 'authenticated' },
