@@ -79,6 +79,7 @@ import {
   type HealthResponse,
   type IngestReport,
   type JournalSystem,
+  type KnowledgeEntry,
   type KnowledgeResolution,
   type KnowledgeReviewQueueResponse,
   type KnowledgeStatus,
@@ -312,7 +313,7 @@ import {
   ignoreDiscovery, listDiscoveries, recordAskDiscovery, recordDiscovery, recordDocumentDiscovery, setDiscoveryEnabled,
 } from './knowledge/discovery.ts';
 import {
-  assertKnowledgeDraftReady, assertKnowledgeDraftSource, createKnowledgeDrafts, editKnowledgeDraft, presentKnowledgeEntry,
+  assertKnowledgeDraftReady, assertKnowledgeDraftSource, createKnowledgeDrafts, editKnowledgeDraft, inspectReviewSource, presentKnowledgeEntry,
   withKnowledgeDraftMutation,
 } from './knowledge/drafts.ts';
 import {
@@ -3538,7 +3539,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
             return;
           }
           assertKnowledgeDraftReady(deps.db, entry);
-          const { check, lifecycle } = await checkDraftPublication(deps.db, deps.config, user, entry);
+          const { check, lifecycle, vectorRevision } = await checkDraftPublication(deps.db, deps.config, user, entry);
           assertKnowledgeDraftReady(deps.db, entry);
           if (check.kind === 'conflict') {
             const note = { ...entry.note, conflict: check.conflict,
@@ -3571,7 +3572,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
             actor: { id: user.id },
             note,
             ...(entry.note?.draftSource === undefined ? {} : {
-              revalidate: () => assertStillDirectPublication(deps.db, user, entry),
+              revalidate: () => assertStillDirectPublication(deps.db, user, entry, vectorRevision),
             }),
           });
           results.push({
@@ -3599,13 +3600,46 @@ export function createApp(deps: AppDeps): Hono<Env> {
     c.header('Cache-Control', 'private, no-store');
     const limit = parseLimit(c.req.query('limit'), 100, 500);
     const user = c.get('user');
-    const items = listReviewQueue(deps.db, limit).map((entry) => presentKnowledgeEntry(entry, user, deps.db));
-    const ids = new Set(items.flatMap((entry) => entry.neighbor === null ? [] : [entry.neighbor.entryId]));
-    const neighbors = [...ids].flatMap((id) => {
+    const queued = listReviewQueue(deps.db, limit);
+    const ids = new Set(queued.flatMap((entry) => entry.neighbor === null ? [] : [entry.neighbor.entryId]));
+    const targets = [...ids].flatMap((id) => {
       const target = findEntry(deps.db, id);
-      return target?.status === 'active' ? [presentKnowledgeEntry(target, user, deps.db)] : [];
+      return target?.status === 'active' ? [target] : [];
     });
-    return c.json({ items, neighbors, threshold: deps.config.knowledgeConflictThreshold } satisfies KnowledgeReviewQueueResponse);
+    const present = (entry: KnowledgeEntry) => presentKnowledgeEntry(entry, user, deps.db);
+    const sources = user === null ? {} : Object.fromEntries([...queued, ...targets].flatMap((entry) => {
+      const source = inspectReviewSource(deps.db, user, entry);
+      return source === undefined ? [] : [[entry.id, source.summary]];
+    }));
+    return c.json({ items: queued.map(present), neighbors: targets.map(present), sources,
+      threshold: deps.config.knowledgeConflictThreshold } satisfies KnowledgeReviewQueueResponse);
+  });
+
+  function requireReviewDocument(c: Context<Env>, id: string): ChunkContextResponse {
+    c.header('Cache-Control', 'private, no-store');
+    const user = c.get('user');
+    if (user === null) throw new AppError('unauthenticated', '请先登录。');
+    const currentViewer = findUserById(deps.db, user.id);
+    if (currentViewer?.status !== 'active' || !hasPermission(currentViewer.role, 'knowledge.review')) {
+      throw new AppError('permission_denied', '当前账号已不能审核知识。');
+    }
+    const entry = findEntry(deps.db, id);
+    const context = entry === null ? undefined : inspectReviewSource(deps.db, toAuthUser(currentViewer), entry)?.context;
+    if (context === undefined) throw new AppError('not_found', '当前无法核对此资料来源。');
+    return context;
+  }
+
+  app.get('/api/v1/knowledge/review/:id/source', (c) => c.json(requireReviewDocument(c, c.req.param('id'))));
+  app.get('/api/v1/knowledge/review/:id/source/file', (c) => {
+    const id = c.req.param('id');
+    const source = requireReviewDocument(c, id);
+    return serveDocumentFile(c, source.document.id, () => {
+      const current = requireReviewDocument(c, id);
+      if (current.document.id !== source.document.id || current.chunk.id !== source.chunk.id ||
+          current.sourceVersion !== source.sourceVersion) {
+        throw new AppError('not_found', '当前无法核对此资料来源。');
+      }
+    });
   });
 
   // 驳回单条草案。**终态、保留行**（见 shared/knowledge.ts 的状态机说明）：

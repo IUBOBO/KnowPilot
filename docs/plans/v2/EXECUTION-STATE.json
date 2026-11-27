@@ -762,7 +762,10 @@
         "12.N2",
         "12.N3"
       ],
-      "prs": [],
+      "prs": [
+        35
+      ],
+      "tested_local_sha": "62616e3df90f7c713f7ba901b6804cd4ee5315d3",
       "head_sha": null,
       "merge_sha": null,
       "acceptance": {
@@ -772,7 +775,7 @@
           "docs/plans/v2/V2-13.md"
         ],
         "reviewer": "independent standards and specification reviews",
-        "reason": "13-B.12.pre passed for the offline scope. Human merge approval, post-merge verification and G4 acceptance are pending."
+        "reason": "PR #35 repair passed exact-code 13-B.12.pre replay and independent reviews. Human merge approval, post-merge verification and G4 acceptance are pending."
       },
       "release_node": "12.released",
       "base_sha": "7714a30fdf724be7913a7077d3da53315efd6c4a",
@@ -1461,8 +1464,33 @@
               }
             },
             "12": {
-              "pr": null,
+              "pr": 35,
               "pre": {
+                "status": "passed",
+                "tested_local_sha": "62616e3df90f7c713f7ba901b6804cd4ee5315d3",
+                "tested_tree_sha": "8a49b02cb3009b9ca9c7135e6ecb1a9e73c0acb4",
+                "commands_passed": 29,
+                "commands_total": 30,
+                "evidence_hashes": {
+                  "review-results.json": "b91c2807f46872b71936bf6a3113373cf780055d25adf8e0ac51e494ebd96707",
+                  "targeted.json": "7f63ae9958173d543ac7ba8007bec49697813e5dfe12298b281710a0372ebf29",
+                  "blockers.json": "34decee2e296a45ea1565005c3e51c2d9a434dca4e4b198b84c65e6da44f1198",
+                  "browser.log": "f902e8212cde6eb589d57da9c9cc497b9b88f7fa2c34c5aadb2abc113903c56e"
+                },
+                "sqlite_v37_restore": "passed",
+                "sqlite_v38_rollback_and_replay": "passed",
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30,
+                  "baseline_sha": "819315c7921796508d35e495cbc4af2b94786fe3"
+                },
+                "independent_review": "passed",
+                "previous_reviewed_pr_head": "6f69f19c3e77ec4368e8c9fb9ee38961d28c4960"
+              },
+              "previous_pre": {
                 "status": "passed",
                 "tested_local_sha": "615f4bc9623c8da1b073673ca7ee260963e46d14",
                 "tested_tree_sha": "9bb2196c60ae8f15db00d160cccfd9d46785c3c2",

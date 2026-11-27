@@ -11,7 +11,7 @@ import { createSession, SESSION_COOKIE } from '../auth/session.ts';
 import { loadConfig } from '../config.ts';
 import { migrate, openDb } from '../db/index.ts';
 import { MIGRATIONS } from '../db/migrations.ts';
-import { createResearchNote } from '../research-notes/repo.ts';
+import { createResearchNote, deleteResearchNote } from '../research-notes/repo.ts';
 import { insertAskRecord } from '../agent/records.ts';
 import { discoverMatch, recordAskDiscovery, recordDiscovery } from './discovery.ts';
 
@@ -126,6 +126,40 @@ assert.equal((await list(ownerCookie)).items.length, 0);
 assert.equal(db.prepare("SELECT count(*) AS n FROM doc_chunks_fts WHERE doc_chunks_fts MATCH 'g4privateprobe'").get()?.n, 0);
 assert.equal(db.prepare("SELECT count(*) AS n FROM knowledge_entries").get()?.n, 0);
 console.log('PASS actual note events, metadata refresh without duplicates, private owner read/mutate, opt-out, ignore, retries, revocation and zero automatic indexing');
+
+const replaceOwner = insertUser(db, 'g4-source-replacement', 'member');
+const replaceCookie = cookie(replaceOwner);
+const first = await note(replaceCookie, '同正文旧来源撤回后使用另存的一份合成笔记。');
+const beforeReplacement = (await list(replaceCookie)).items[0]!;
+const second = await note(replaceCookie, first.body);
+assert.deepEqual((await list(replaceCookie)).items[0]!.source, { kind:'note', id:first.id, revision:first.revision });
+deleteResearchNote(db, replaceOwner.id, first.id, first.revision);
+assert.equal((await list(replaceCookie)).items.length,0);
+assert.equal(recordDiscovery(db, outsider, { kind:'note',id:second.id,revision:second.revision }),false);
+assert.equal(recordDiscovery(db, replaceOwner, { kind:'note',id:second.id,revision:second.revision }),true);
+const afterReplacement = (await list(replaceCookie)).items[0]!;
+assert.equal(afterReplacement.id,beforeReplacement.id);
+assert.equal(afterReplacement.createdAt,beforeReplacement.createdAt);
+assert.deepEqual(afterReplacement.source, { kind:'note',id:second.id,revision:second.revision });
+assert.equal(recordDiscovery(db, replaceOwner, { kind:'note',id:second.id,revision:second.revision }),false);
+assert.equal((await request(endpoint+'/'+afterReplacement.id+'/ignore', replaceCookie, 'POST')).status,200);
+deleteResearchNote(db, replaceOwner.id, second.id, second.revision);
+const third = await note(replaceCookie, first.body);
+assert.equal(recordDiscovery(db, replaceOwner, { kind:'note',id:third.id,revision:third.revision }),false);
+assert.equal((await list(replaceCookie)).items.length,0);
+console.log('PASS an invalid pending source can be replaced without another slot; ignored content stays ignored');
+
+const expiryOwner = insertUser(db, 'g4-expiry-replacement', 'member');
+const oldBody = '过期建议使用仍可核对的合成正文。';
+const makeVersion = () => createResearchNote(db,expiryOwner.id,{title:'合成过期',body:oldBody,tags:[],runs:[]});
+const expired = makeVersion();
+const sourceFor = (row: Pick<ResearchNote, 'id' | 'revision'>) => ({kind:'note' as const,id:row.id,revision:row.revision});
+assert.equal(recordDiscovery(db,expiryOwner,sourceFor(expired),new Date(now.getTime()-8*24*60*60_000)),true);
+deleteResearchNote(db,expiryOwner.id,expired.id,expired.revision);
+const newcomer = makeVersion();
+assert.equal(recordDiscovery(db,expiryOwner,sourceFor(newcomer),now),true);
+assert.deepEqual((await list(cookie(expiryOwner))).items[0]!.source,sourceFor(newcomer));
+console.log('PASS an expired invalid slot can be renewed under the regular cooldown and budget');
 
 const boundaries = Array.from({length:8},(_,i)=>createResearchNote(db,rateOwner.id,
   {title:'合成阈值',body:'第 '+i+' 个合成发现输入用于覆盖日限频。',tags:[],runs:[]}));

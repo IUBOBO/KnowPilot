@@ -154,9 +154,12 @@ export function revalidateDraftOrigin(db: Db, origin: KnowledgeDraftOrigin): voi
   switch (origin.kind) {
     case 'manual':
       return;
-    case 'ask':
-      version = readAsk(db, user, origin.id, origin.excerpt).version;
+    case 'ask': {
+      const current = readAsk(db, user, origin.id, origin.excerpt);
+      if (origin.excerptVerification === 'matched' && current.excerptVerification !== 'matched') return changed();
+      version = current.version;
       break;
+    }
     case 'note': {
       const note = readNote(db, user, origin.id, Number(origin.version), origin.selection);
       if (note.excerpt !== origin.excerpt) return changed();

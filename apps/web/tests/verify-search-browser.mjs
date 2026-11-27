@@ -1044,13 +1044,21 @@ try {
   const authorSource = [
     '主题：浏览器合成审核', '项目：模拟项目', '版本：v1', '时间：模拟日期', '条件：模拟常温',
     '结论：允许标定', '已发布的旧指标 webg4oldprobe。',
+    '校对记录甲。','校对记录乙。','重复核对项。','重复核对项。','重复核对项。',
   ].join('\n');
-  async function queueLifecycle(content) {
+  async function queueLifecycle(content, source) {
     const generated = await notePage.request.post(origin + '/api/v1/knowledge/drafts', {
-      data: { text: content, consentConfirmed: true },
+      data: { ...(source === undefined ? { text: content } : { source }), consentConfirmed: true },
     });
     assert.equal(generated.status(), 201);
     const { groupId, entries } = await generated.json();
+    if (source !== undefined) {
+      const draft = entries[0];
+      const edit = await notePage.request.patch(origin + '/api/v1/knowledge/' + draft.id + '/draft', {
+        data: { revision: draft.note.revision, kind: draft.kind, content },
+      });
+      assert.equal(edit.status(), 200, await edit.text());
+    }
     const decision = await notePage.request.post(origin + '/api/v1/knowledge/groups/' + groupId + '/confirm', {
       data: { consentConfirmed: true },
     });
@@ -1060,7 +1068,9 @@ try {
   }
   const lifecycleOld = await queueLifecycle(authorSource);
   assert.equal(lifecycleOld.outcome, 'active');
-  const lifecycleNew = await queueLifecycle(authorSource + '\n补充一个合成步骤 webg4pendingprobe。');
+  const revisedSteps = authorSource.replace('校对记录甲。\n校对记录乙。','校对记录乙。\n校对记录甲。')
+    .replace('重复核对项。\n重复核对项。\n重复核对项。','重复核对项。');
+  const lifecycleNew = await queueLifecycle(revisedSteps + '\n补充一个合成步骤 webg4pendingprobe。');
   assert.equal(lifecycleNew.outcome, 'conflicted');
   assert.equal(db.prepare("SELECT count(*) AS n FROM doc_chunks_fts WHERE doc_chunks_fts MATCH 'webg4pendingprobe'").get().n, 0);
   const reviewerId = await insertUser(db, 'g4-browser-reviewer', {
@@ -1074,7 +1084,12 @@ try {
   await review.getByText('补充待审核', { exact: true }).waitFor();
   await review.getByText('来源、版本和正文差异', { exact: true }).click();
   await review.getByText('新来源 手动文本 · 旧来源 手动文本', { exact: true }).waitFor();
-  await review.getByText('补充一个合成步骤 webg4pendingprobe。', { exact: true }).waitFor();
+  const diffAdded = review.getByText('新提交新增（2 行）', { exact: true }).locator('..');
+  const diffRemoved = review.getByText('仅旧条目保留（3 行）', { exact: true }).locator('..');
+  await diffAdded.getByText('补充一个合成步骤 webg4pendingprobe。', { exact: true }).waitFor();
+  assert.equal(await diffAdded.locator('li').filter({ hasText: '校对记录甲。' }).count(), 1);
+  assert.equal(await diffRemoved.locator('li').filter({ hasText: '校对记录甲。' }).count(), 1);
+  assert.equal(await diffRemoved.locator('li').filter({ hasText: '重复核对项。' }).count(), 2);
   await reviewPage.screenshot({ path: join(output, 'knowledge-lifecycle-review.png') });
   await review.getByRole('button', { name: '合并发布' }).click();
   const approval = reviewPage.getByRole('dialog', { name: '合并发布？' });
@@ -1092,7 +1107,35 @@ try {
   assert.equal(db.prepare('SELECT status FROM knowledge_entries WHERE id=?').get(lifecycleOld.item.id).status, 'superseded');
   assert((await runSearch(notePage, 'webg4mergedprobe', { material: 'knowledge' })).hits.some((hit) => hit.documentId === acceptedEntry.documentId));
   assert.equal((await runSearch(notePage, 'webg4oldprobe', { material: 'knowledge' })).hits.length, 0);
+
+  const sourceBody = reviewedBody + '\n核验原资料的合成版本 webg4sourceproof。';
+  const uploadSource = await notePage.request.post(origin + '/api/v1/documents', { multipart: {
+    file: { name: 'browser-review-source.txt', mimeType: 'text/plain',
+      buffer: Buffer.from(sourceBody, 'utf8') },
+    material: 'paper', consentConfirmed: 'true',
+  } });
+  assert.equal(uploadSource.status(), 201, await uploadSource.text());
+  const sourceDocument = (await uploadSource.json()).document;
+  const sourceQueued = await queueLifecycle(sourceBody, { kind: 'document', id: sourceDocument.id,
+    chunkId: sourceDocument.firstChunkId, version: String(sourceDocument.indexVersion) });
+  assert.equal(sourceQueued.outcome, 'conflicted');
+  await reviewPage.reload();
+  await review.getByText('来源、版本和正文差异', { exact: true }).click();
+  await review.getByRole('button', { name: /^核对原资料/ }).click();
+  const reading = reviewPage.getByRole('complementary', { name: readerName });
+  await reading.getByText(/核验原资料的合成版本 webg4sourceproof/u).waitFor();
+  const downloadHref = await reading.getByRole('link', { name: '下载原件' }).getAttribute('href');
+  assert.equal(downloadHref, '/api/v1/knowledge/review/' + sourceQueued.item.id + '/source/file');
+  const originalBytes = await reviewPage.request.get(origin + downloadHref);
+  assert.equal(originalBytes.status(), 200);
+  assert.equal(await originalBytes.text(), sourceBody);
+  await reading.getByRole('button', { name: '关闭阅读器' }).click();
+  db.prepare('UPDATE documents SET index_version=index_version+1 WHERE id=?').run(sourceDocument.id);
+  await review.getByRole('button', { name: /^核对原资料/ }).click();
+  await reading.getByText(/此证据不可读取/u).waitFor();
+  assert.equal((await reviewPage.request.get(origin + downloadHref)).status(), 404);
   await reviewPage.close();
+  console.log('PASS original review document is version-pinned and fails closed on access after reindex');
   assert.deepEqual(pageErrors, []);
   console.log('PASS lifecycle reviewer compares provenance and changes, explicitly merges, and publishes the reviewed index');
   console.log('PASS research-note save/edit/selection, run-qualified citations, private search prefill and scoped history, dataset reauthorization, withdrawal and no automatic model call');

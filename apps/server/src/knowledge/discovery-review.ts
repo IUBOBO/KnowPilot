@@ -2,12 +2,12 @@ import {
   AppError, hasPermission, type AuthUser, type KnowledgeEntry, type KnowledgeLifecycleReview, type KnowledgeNote,
 } from '@knowpilot/shared';
 import { findUserById } from '../auth/users.ts';
-import type { AppConfig } from '../config.ts';
+import { embeddingModelKey, type AppConfig } from '../config.ts';
 import type { Db } from '../db/index.ts';
 import { admitEntry } from './admit.ts';
 import { detectConflict, type ConflictCheck } from './conflict.ts';
 import { DISCOVERY_SIMILARITY_THRESHOLD } from './discovery-classifier.ts';
-import { currentCandidateRevision, discoverMatch } from './discovery.ts';
+import { currentCandidateRevision, discoverMatch, vectorCandidates } from './discovery.ts';
 import { readDraftText } from './draft-source.ts';
 import { assertKnowledgeDraftReady } from './drafts.ts';
 import { findById, markSuperseded } from './repo.ts';
@@ -21,13 +21,11 @@ function classifyDraftForPublication(db: Db, user: AuthUser, entry: KnowledgeEnt
   if (match.kind === 'insufficient') {
     throw new AppError('invalid_argument', '缺少明确依据，或条件、版本等字段不明确。请补充后再确认。', { httpStatus: 409 });
   }
-  const completeScope = (['topic','project','conditions','version','time'] as const).every((key) => match.context[key] !== undefined);
-  const check: ConflictCheck | undefined = completeScope ? { kind: 'clear' } : undefined;
   if (match.neighbor === null || (match.kind !== 'supplement' && match.kind !== 'version' && match.kind !== 'conflict')) {
-    return { check };
+    return undefined;
   }
   const current = findById(db, match.neighbor.id);
-  if (current === null) return { check };
+  if (current === null) return undefined;
 
   const lifecycle: KnowledgeLifecycleReview = {
     kind: match.kind, targetId: match.neighbor.id, targetRevision: match.neighbor.revision,
@@ -42,25 +40,35 @@ function classifyDraftForPublication(db: Db, user: AuthUser, entry: KnowledgeEnt
   };
 }
 
+interface VectorRevision {
+  model: string;
+  revision: string;
+}
+
 export async function checkDraftPublication(
   db: Db, config: AppConfig, user: AuthUser, entry: KnowledgeEntry, checkVectors = detectConflict,
-): Promise<{ check: ConflictCheck; lifecycle?: KnowledgeLifecycleReview | undefined }> {
+): Promise<{ check: ConflictCheck; lifecycle?: KnowledgeLifecycleReview | undefined; vectorRevision?: VectorRevision }> {
   if (entry.note?.lifecycleVersion !== 1) return { check: await checkVectors(db, config, entry) };
 
   const proposal = classifyDraftForPublication(db, user, entry);
-  if (proposal.check !== undefined) return { check: proposal.check, lifecycle: proposal.lifecycle };
+  if (proposal !== undefined) return proposal;
 
-  const check = await checkVectors(db, config, entry);
+  const model = embeddingModelKey(config);
+  const eligible = vectorCandidates(db, user, entry.content, model);
+  const check = await checkVectors(db, config, entry, (id) => eligible.ids.has(id));
   if (check.kind === 'conflict') {
     throw new AppError('invalid_argument', '与正式知识相似但缺少可核对的依据、条件或版本。请补充后再确认。', { httpStatus: 409 });
   }
-  return { check };
+  return check.kind === 'clear' ? { check, vectorRevision: { model, revision: eligible.revision } } : { check };
 }
 
-export function assertStillDirectPublication(db: Db, user: AuthUser, entry: KnowledgeEntry): void {
+export function assertStillDirectPublication(db: Db, user: AuthUser, entry: KnowledgeEntry, vectorRevision?: VectorRevision): void {
   assertKnowledgeDraftReady(db, entry);
-  if (entry.note?.lifecycleVersion === 1 && classifyDraftForPublication(db, user, entry).check?.kind === 'conflict') {
-    throw new AppError('invalid_argument', '正式知识在处理期间发生变化，请重试以送审。', { httpStatus: 409 });
+  if (entry.note?.lifecycleVersion !== 1) return;
+  if (classifyDraftForPublication(db, user, entry) !== undefined ||
+      (vectorRevision !== undefined &&
+        vectorCandidates(db, user, entry.content, vectorRevision.model).revision !== vectorRevision.revision)) {
+    throw new AppError('invalid_argument', '正式知识在处理期间发生变化，请重试确认。', { httpStatus: 409 });
   }
 }
 
@@ -92,7 +100,14 @@ export async function resolveLifecycle(
   const supersededEntryId = replacing ? target.id : null;
   const note: KnowledgeNote = {
     ...entry.note,
-    ...(resolution === 'merge' ? { draftDetails: { claim: 'reviewed_merge' } } : {}),
+    ...(resolution === 'merge' ? {
+      revision: (entry.note?.revision ?? 1) + 1,
+      reviewSubmission: {
+        revision: entry.note?.revision ?? 1, content: entry.content,
+        ...(entry.note?.draftDetails === undefined ? {} : { details: entry.note.draftDetails }),
+      },
+      draftDetails: { claim: 'reviewed_merge' },
+    } : {}),
     lifecycle: { ...lifecycle, mode: resolution === 'supersede' ? 'update' : resolution },
     resolution: { kind: resolution, by: user.id, at: now, ...(replacing ? { supersededEntryId: target.id } : {}) },
   };

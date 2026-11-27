@@ -107,6 +107,7 @@ export async function detectConflict(
   db: Db,
   cfg: AppConfig,
   entry: Pick<KnowledgeEntry, 'kind' | 'content'>,
+  canCompare?: (entryId: string) => boolean,
 ): Promise<ConflictCheck> {
   const model = embeddingModelKey(cfg);
 
@@ -120,7 +121,8 @@ export async function detectConflict(
   }
 
   const rows = activeKnowledgeVectors(db, model);
-  if (rows.length === 0) return { kind: 'clear' };
+  const eligible = canCompare === undefined ? rows : rows.filter((row) => canCompare(row.entryId));
+  if (eligible.length === 0) return { kind: 'clear' };
 
   // 【为什么 embed 的是渲染后的 markdown，而不是 entry.content】
   //   邻居侧来自 `chunk_embeddings`，那是**入库文档切出来的块文本**，里面带着
@@ -146,7 +148,7 @@ export async function detectConflict(
   }
 
   const candidates: ActiveCandidate[] = [];
-  for (const row of rows) {
+  for (const row of eligible) {
     try {
       candidates.push({
         vec: blobToVec(row.vec, row.dim),

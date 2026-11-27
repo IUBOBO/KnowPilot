@@ -6,8 +6,10 @@ import {
   KNOWLEDGE_MIN_INPUT_CHARS,
   KNOWLEDGE_MAX_INPUT_CHARS,
   KNOWLEDGE_RESOLUTION_LABELS,
+  type EvidenceOpenRequest,
   type KnowledgeEntry,
   type KnowledgeResolution,
+  type KnowledgeReviewSource,
   type KnowledgeReviewQueueResponse,
   type ResolveKnowledgeResponse,
 } from '@knowpilot/shared';
@@ -16,6 +18,7 @@ import { apiGet, apiPost, isAbort, toApiError, type ApiError } from '../api.ts';
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 import { EmptyState } from '../components/EmptyState.tsx';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
+import { EvidenceViewer, useEvidenceViewer } from '../components/evidence/EvidenceViewer.tsx';
 import { SkeletonList } from '../components/Skeleton.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { fmtDateTime } from '../format.ts';
@@ -149,6 +152,7 @@ export function KnowledgeReviewPage() {
               <ConflictRow
                 key={selected.id}
                 entry={selected}
+                sources={queue?.sources}
                 neighbor={selected.neighbor === null ? null : (byId.get(selected.neighbor.entryId) ?? null)}
                 onPick={(resolution) => {
                   setDialogError(null);
@@ -217,10 +221,12 @@ function dialogBody(resolution: KnowledgeResolution): string {
 function ConflictRow({
   entry,
   neighbor,
+  sources,
   onPick,
 }: {
   entry: KnowledgeEntry;
   neighbor: KnowledgeEntry | null;
+  sources: KnowledgeReviewQueueResponse['sources'];
   onPick: (resolution: KnowledgeResolution) => void;
 }) {
   const conflict = entry.note?.conflict;
@@ -281,7 +287,7 @@ function ConflictRow({
         )}
       </div>
 
-      {lifecycle !== undefined && <ReviewComparison entry={entry} neighbor={neighbor} />}
+      {lifecycle !== undefined && <ReviewComparison entry={entry} neighbor={neighbor} sources={sources} />}
       <div className="kb-actions">
         {/* 「取代已有」拿不到对手就点不动：服务端也会拒（见 app.ts 的 resolve），
             但在这里就先说清，别让人点一个必然报错的按钮。 */}
@@ -316,24 +322,87 @@ const reviewFields = [
 ] as const;
 const sourceLabels = { note: '研究笔记', manual: '手动文本', upload: '上传资料', conversation: '问答来源' } as const;
 
-function ReviewComparison({ entry, neighbor }: { entry: KnowledgeEntry; neighbor: KnowledgeEntry | null }) {
+function compareLines(oldText: string, newText: string) {
+  const split = (value: string) => value.split('\n').map((line) => line.trim()).filter(Boolean);
+  const oldLines = split(oldText);
+  const newLines = split(newText);
+  const columns = newLines.length + 1;
+  const cells = (oldLines.length + 1) * columns;
+  const added: string[] = [];
+  const removed: string[] = [];
+  // Use the longest common subsequence to preserve order and repeated occurrences.
+  // For exceptionally long historical entries show both sequences rather than exhaust the browser.
+  if (cells > 4_100_000) return { added: newLines, removed: oldLines, complete: false };
+  const lengths = new Uint16Array(cells);
+  for (let i = oldLines.length - 1; i >= 0; i--) {
+    for (let j = newLines.length - 1; j >= 0; j--) {
+      const index = i * columns + j;
+      lengths[index] = oldLines[i] === newLines[j] ? lengths[index + columns + 1]! + 1
+        : Math.max(lengths[index + 1]!, lengths[index + columns]!);
+    }
+  }
+  let i = 0;
+  let j = 0;
+  while (i < oldLines.length && j < newLines.length) {
+    if (oldLines[i] === newLines[j]) {
+      i++;
+      j++;
+    } else if (lengths[(i + 1) * columns + j]! >= lengths[i * columns + j + 1]!) {
+      removed.push(oldLines[i++]!);
+    } else {
+      added.push(newLines[j++]!);
+    }
+  }
+  return { added: added.concat(newLines.slice(j)), removed: removed.concat(oldLines.slice(i)), complete: true };
+}
+
+function ReviewSource({ entry, source, label }: {
+  entry: KnowledgeEntry; source: KnowledgeReviewSource | undefined; label: string;
+}) {
+  const request: EvidenceOpenRequest | undefined = source?.document === undefined ? undefined
+    : { version: 1, locator: source.document.locator };
+  const scope = request === undefined ? entry.id : entry.id + ':' + request.locator.sourceVersion;
+  const { reader, onOpenEvidence } = useEvidenceViewer(request === undefined ? [] : [{
+    request, sourcePath: '/api/v1/knowledge/review/' + encodeURIComponent(entry.id) + '/source',
+    requireMatchingVersion: true,
+  }], scope);
+  return <div>
+    <strong>{label}</strong>
+    <span> {source === undefined ? '未登记可核验的来源' : source.verification === 'unavailable' ? '来源已失效或不可读取'
+      : source.verification === 'matched' ? '已核对保存的来源版本' : '提交人提供的文本，未与原文匹配'}</span>
+    {source?.version !== undefined && <span> · {source.kind === 'ask' ? '运行时间' : '来源版本'} {source.version}</span>}
+    {source?.capturedAt !== undefined && <span> · 保存于 {fmtDateTime(source.capturedAt)}</span>}
+    {source?.verification === 'matched' && (source.kind === 'note' || source.kind === 'ask') &&
+      <span> · 私有原件仅作者可读</span>}
+    {request !== undefined && <EvidenceViewer reader={reader}>
+      <button type="button" className="link-btn" onClick={() => onOpenEvidence(request)}>
+        核对原资料：{source?.document?.title}
+      </button>
+    </EvidenceViewer>}
+  </div>;
+}
+
+function ReviewComparison({ entry, neighbor, sources }: {
+  entry: KnowledgeEntry; neighbor: KnowledgeEntry | null; sources: KnowledgeReviewQueueResponse['sources'];
+}) {
   const lifecycle = entry.note?.lifecycle;
   if (lifecycle === undefined) return null;
-  const oldLines = new Set((neighbor?.content ?? '').split('\n').map((line) => line.trim()).filter(Boolean));
-  const newLines = new Set(entry.content.split('\n').map((line) => line.trim()).filter(Boolean));
+  const { added, removed, complete } = compareLines(neighbor?.content ?? '', entry.content);
   const changes = [
-    { label: '新提交新增', lines: [...newLines].filter((line) => !oldLines.has(line)) },
-    { label: '仅旧条目保留', lines: [...oldLines].filter((line) => !newLines.has(line)) },
+    { label: '新提交新增', lines: added },
+    { label: '仅旧条目保留', lines: removed },
   ];
   return <details className="kb-conflict">
     <summary>来源、版本和正文差异</summary>
     <p>新来源 {sourceLabels[entry.sourceType]} · 旧来源 {neighbor ? sourceLabels[neighbor.sourceType] : '当前不可读取'}</p>
+    <ReviewSource entry={entry} source={sources?.[entry.id]} label="新来源核验" />
+    {neighbor !== null && <ReviewSource entry={neighbor} source={sources?.[neighbor.id]} label="旧来源核验" />}
     <dl>{reviewFields.map(([key,label]) => <div key={key}>
       <dt>{label}</dt><dd>新 {lifecycle.incomingContext[key] ?? '未记录'} · 旧 {lifecycle.targetContext[key] ?? '未记录'}</dd>
     </div>)}</dl>
-    {neighbor !== null && changes.map(({ label, lines }) => <div key={label}>
+    {neighbor !== null && (complete ? changes.map(({ label, lines }) => <div key={label}>
       <strong>{label}（{lines.length} 行）</strong>
-      <ul>{lines.slice(0, 8).map((line) => <li key={line}>{line}</li>)}</ul>
-    </div>)}
+      <ul>{lines.slice(0, 8).map((line, index) => <li key={index}>{line}</li>)}</ul>
+    </div>) : <p>条目过长，请对照上方完整正文核对步骤顺序和重复项。</p>)}
   </details>;
 }

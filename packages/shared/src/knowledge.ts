@@ -206,6 +206,8 @@ export interface KnowledgeNote {
   lifecycleVersion?: 1;
   lifecycle?: import('./knowledge-discovery.ts').KnowledgeLifecycleReview;
   replacement?: { kind: 'merge' | 'supersede'; entryId: string; by: string; at: string };
+  /** Original author revision, retained on a merge and never included in the public index. */
+  reviewSubmission?: { revision: number; content: string; details?: KnowledgeDraftDetails };
   draftSource?: KnowledgeDraftOrigin;
   draftDetails?: KnowledgeDraftDetails;
   draftSubmitted?: boolean;
@@ -278,10 +280,19 @@ export interface ListKnowledgeEntriesResponse {
   items: readonly KnowledgeEntry[];
 }
 
+export interface KnowledgeReviewSource {
+  kind: KnowledgeDraftOrigin['kind'];
+  verification: 'matched' | 'submitted' | 'unavailable';
+  version?: string;
+  capturedAt?: string;
+  document?: { title: string; locator: import('./search.ts').DocumentEvidenceLocator };
+}
+
 /** GET /api/v1/knowledge/review 的响应体。 */
 export interface KnowledgeReviewQueueResponse {
   items: readonly KnowledgeEntry[];
   neighbors?: readonly KnowledgeEntry[];
+  sources?: Readonly<Record<string, KnowledgeReviewSource>>;
   /** 当前生效的冲突阈值，界面要把它写出来（≥它就会挂起等待裁决）。 */
   threshold: number;
 }

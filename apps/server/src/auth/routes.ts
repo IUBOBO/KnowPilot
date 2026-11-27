@@ -208,6 +208,8 @@ export const ROUTE_PERMISSIONS: readonly RoutePermission[] = [
   { method: 'PATCH', path: '/api/v1/knowledge/:id/draft', rule: 'knowledge.submit' },
   // 审核队列：只有 review 者进得来（队列里是**所有人**的待确认/冲突条目）。
   { method: 'GET', path: '/api/v1/knowledge/review', rule: 'knowledge.review' },
+  { method: 'GET', path: '/api/v1/knowledge/review/:id/source', rule: 'knowledge.review' },
+  { method: 'GET', path: '/api/v1/knowledge/review/:id/source/file', rule: 'knowledge.review' },
   // 确认整组：提交人（owner）或有 review 权限的人都可，owner 判在 handler 里。
   { method: 'POST', path: '/api/v1/knowledge/groups/:groupId/confirm', rule: 'knowledge.submit' },
   // 驳回单条：同上，owner-or-review 判在 handler 里。

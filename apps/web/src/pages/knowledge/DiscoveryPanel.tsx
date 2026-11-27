@@ -55,6 +55,7 @@ function OwnedDiscoveryPanel() {
   return <details className="card knowledge-discovery">
     <summary>知识建议{response && response.items.length > 0 ? '（' + response.items.length + '）' : ''}</summary>
     {error !== null && <ErrorNotice error={error} onRetry={() => { setError(null); setAttempt((n) => n + 1); }} />}
+    {response === undefined && error === null && <p role="status">正在读取知识建议…</p>}
     {response !== undefined && <>
       <label>
         <input type="checkbox" checked={response.enabled} disabled={busy}

@@ -29,21 +29,21 @@ export function discoveryFingerprint(value: string): string {
 function parseContext(text: string) {
   const context: KnowledgeDiscoveryContext = {};
   let claim: string | undefined;
-  let ambiguous = false;
+  const ambiguousFields = new Set<keyof KnowledgeDiscoveryContext | 'claim'>();
   for (const match of text.matchAll(/^\s*(?:[-*]\s+)?(主题|项目|版本|时间|条件|结论)\s*[:：]\s*([^\r\n]{1,200})$/gmu)) {
     const field = match[1]!;
     const value = normalizeKnowledge(match[2]!);
     if (value === '') continue;
     if (field === '结论') {
-      ambiguous ||= claim !== undefined && claim !== value;
+      if (claim !== undefined && claim !== value) ambiguousFields.add('claim');
       claim = value;
     } else {
       const key = contextFields[field as keyof typeof contextFields];
-      ambiguous ||= context[key] !== undefined && context[key] !== value;
+      if (context[key] !== undefined && context[key] !== value) ambiguousFields.add(key);
       context[key] = value;
     }
   }
-  return { context, claim, ambiguous };
+  return { context, claim, ambiguous: ambiguousFields.size !== 0, ambiguousFields };
 }
 
 function terms(text: string): Set<string> {
@@ -57,9 +57,10 @@ function similarities(left: Set<string>, right: Set<string>): number {
   return intersection === 0 ? 0 : intersection / (left.size + right.size - intersection);
 }
 
-function distinct(left: KnowledgeDiscoveryContext, right: KnowledgeDiscoveryContext): boolean {
-  return (['topic', 'project', 'conditions'] as const)
-    .some((key) => left[key] !== undefined && right[key] !== undefined && left[key] !== right[key]);
+function distinct(left: ReturnType<typeof parseContext>, right: ReturnType<typeof parseContext>,
+  keys: readonly (keyof KnowledgeDiscoveryContext)[]): boolean {
+  return keys.some((key) => !left.ambiguousFields.has(key) && !right.ambiguousFields.has(key) &&
+    left.context[key] !== undefined && right.context[key] !== undefined && left.context[key] !== right.context[key]);
 }
 
 function comparable(left: KnowledgeDiscoveryContext, right: KnowledgeDiscoveryContext): boolean {
@@ -72,6 +73,10 @@ function opposite(left: string, right: string): boolean {
   return negative(left) === right || negative(right) === left;
 }
 
+export function hasDifferentProjectOrConditions(left: string, right: string): boolean {
+  return distinct(parseContext(left), parseContext(right), ['project', 'conditions']);
+}
+
 export function classifyKnowledge(content: string, candidates: readonly Candidate[]): KnowledgeDiscoveryMatch {
   const incoming = parseContext(content);
   const context = incoming.context;
@@ -81,17 +86,20 @@ export function classifyKnowledge(content: string, candidates: readonly Candidat
 
   const fingerprint = discoveryFingerprint(content);
   const inputTerms = terms(content);
-  let best: { item: Candidate; scope: ReturnType<typeof parseContext>; score: number; rank: number } | undefined;
+  let best: { item: Candidate; scope: ReturnType<typeof parseContext>; score: number; rank: number; exact: boolean } | undefined;
   for (const item of candidates) {
     const scope = parseContext(item.content);
-    if (distinct(incoming.context, scope.context)) continue;
+    if (distinct(incoming, scope, ['topic', 'project', 'conditions'])) continue;
     const exact = discoveryFingerprint(item.content) === fingerprint;
     const score = exact ? 1 : similarities(inputTerms, terms(item.content));
     const topic = context.topic !== undefined && context.topic === scope.context.topic;
-    const rank = exact ? 3 : topic ? 1 + score : score;
     if (score < DISCOVERY_SIMILARITY_THRESHOLD && !topic) continue;
+    const sameVersionConflict = !scope.ambiguous && comparable(context, scope.context) &&
+      context.version === scope.context.version && context.time === scope.context.time &&
+      incoming.claim !== undefined && scope.claim !== undefined && opposite(incoming.claim, scope.claim);
+    const rank = (exact ? 5 : sameVersionConflict ? 3 : topic ? 1 : 0) + score;
     if (best === undefined || rank > best.rank || (rank === best.rank && item.id < best.item.id)) {
-      best = { item, scope, score, rank };
+      best = { item, scope, score, rank, exact };
     }
   }
   if (best === undefined) return { kind: 'new', reason: '在可见的正式知识中未找到足够相似的条目。', score: 0, neighbor: null, context };
@@ -101,7 +109,7 @@ export function classifyKnowledge(content: string, candidates: readonly Candidat
     context: best.scope.context,
   };
   const match = { score: best.score, neighbor, context };
-  if (best.rank === 3) return { ...match, kind: 'duplicate', reason: '去除排版差异后正文完全相同。' };
+  if (best.exact) return { ...match, kind: 'duplicate', reason: '去除排版差异后正文完全相同。' };
   const old = best.scope;
   if (old.ambiguous || !comparable(context, old.context) || !incoming.claim || !old.claim) {
     return { ...match, kind: 'insufficient', reason: '材料相似，但主题、项目、版本、时间、条件或结论不足。' };
