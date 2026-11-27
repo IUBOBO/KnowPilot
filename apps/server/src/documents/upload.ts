@@ -11,7 +11,7 @@
  * 只把行插成 uploaded，索引成功后才由 ingest 置 ready。
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 import { AppError, MATERIALS, type Material } from '@knowpilot/shared';
 import { embeddingModelKey, type AppConfig } from '../config.ts';
@@ -56,11 +56,28 @@ export interface UploadResult {
   duplicated: boolean;
 }
 
-export async function uploadDocument(
-  db: Db,
-  cfg: AppConfig,
-  input: UploadInput,
-): Promise<UploadResult> {
+export interface StagedDocumentOriginal {
+  path: string;
+  finalSourcePath: string;
+  promote: () => void;
+  rollbackPromotion: () => void;
+  dispose: () => void;
+}
+
+export interface PreparedDocumentUpload {
+  id: string;
+  material: Material;
+  title: string;
+  fileName: string;
+  sourcePath: string;
+  contentHash: string;
+  storeOriginal: () => void;
+  stageOriginal: () => StagedDocumentOriginal;
+  insert: (db: Db, stagedSourcePath?: string) => void;
+}
+
+/** Prepare an original without publishing a document row. */
+export async function prepareDocumentUpload(cfg: AppConfig, input: UploadInput): Promise<PreparedDocumentUpload> {
   // ── 1. 校验 ────────────────────────────────────────────────
   const material = MATERIALS.find((m) => m === input.material);
   if (material === undefined) {
@@ -70,6 +87,7 @@ export async function uploadDocument(
     );
   }
 
+  const validatedMaterial: Material = material;
   const fileName = input.file.name;
   const ext = extname(fileName).toLowerCase();
 
@@ -99,21 +117,11 @@ export async function uploadDocument(
     );
   }
 
-  // ── 2. 内容哈希 ────────────────────────────────────────────
   const contentHash = createHash('sha256').update(buf).digest('hex');
-
-  // ── 3. 查重（幂等）─────────────────────────────────────────
-  // 用户不知道自己上次传过没有，重复上传返回已有记录比报错有用得多。
-  const existing = findByContentHash(db, contentHash, embeddingModelKey(cfg));
-  if (existing !== undefined) {
-    return { documentId: existing.id, duplicated: true };
-  }
-
-  // ── 4. 落盘 ───────────────────────────────────────────────
-  mkdirSync(cfg.uploadDir, { recursive: true });
   const absPath = join(cfg.uploadDir, `${contentHash}${ext}`);
-  if (!existsSync(absPath)) {
-    writeFileSync(absPath, buf);
+  function storeOriginal() {
+    mkdirSync(cfg.uploadDir, { recursive: true });
+    if (!existsSync(absPath)) writeFileSync(absPath, buf);
   }
 
   // 存【相对仓库根】的路径，不是绝对路径也不是相对 cwd 的路径：
@@ -122,35 +130,52 @@ export async function uploadDocument(
   // 避免数据库里出现 `data\uploads\...` 这种只有 Windows 认识的写法。
   const sourcePath = relative(cfg.repoRoot, absPath).split('\\').join('/');
 
-  // ── 5. 入库 ───────────────────────────────────────────────
   const id = randomUUID();
-  const now = new Date().toISOString();
-  const trimmed = input.title?.trim();
-  const title = trimmed !== undefined && trimmed !== '' ? trimmed : fileName;
+  function stageOriginal(): StagedDocumentOriginal {
+    mkdirSync(cfg.uploadDir, { recursive: true });
+    const directory = mkdtempSync(join(cfg.uploadDir, '.draft-'));
+    const path = join(directory, 'original' + ext);
+    const finalPath = join(cfg.uploadDir, id + ext);
+    const finalSourcePath = relative(cfg.repoRoot, finalPath).split('\\').join('/');
+    let ownsFinal = false;
+    const dispose = () => rmSync(directory, { recursive: true, force: true });
+    const rollbackPromotion = () => { if (ownsFinal) rmSync(finalPath, { force: true }); };
+    function promote() {
+      const file = openSync(finalPath, 'wx');
+      ownsFinal = true;
+      try {
+        writeFileSync(file, buf);
+      } finally {
+        closeSync(file);
+      }
+    }
+    try {
+      writeFileSync(path, buf);
+      return { path, finalSourcePath, promote, rollbackPromotion, dispose };
+    } catch (error) {
+      dispose();
+      throw error;
+    }
+  }
+  const title = input.title?.trim() || fileName;
+  function insert(db: Db, stagedSourcePath = sourcePath) {
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO documents
+         (id, material, title, file_name, byte_size, source_path, content_hash,
+          group_id, uploaded_by, status, created_at, consent_confirmed_by, consent_confirmed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 'uploaded', ?, ?, ?)`,
+    ).run(id, validatedMaterial, title, fileName, buf.byteLength, stagedSourcePath, contentHash,
+      input.uploadedBy, now, input.consentConfirmedBy, input.consentConfirmedBy === null ? null : now);
+  }
+  return { id, material, title, fileName, sourcePath, contentHash, storeOriginal, stageOriginal, insert };
+}
 
-  // 确认时刻与确认人一起写。分两次写（先插行再 UPDATE）会让"确认了但时间没写上"
-  // 这种半成品留在库里，而这个字段的全部价值就在于它是一次**完整的**证据。
-  const consentAt = input.consentConfirmedBy === null ? null : now;
-
-  db.prepare(
-    `INSERT INTO documents
-       (id, material, title, file_name, byte_size, source_path, content_hash,
-        group_id, uploaded_by, status, created_at,
-        consent_confirmed_by, consent_confirmed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 'uploaded', ?, ?, ?)`,
-  ).run(
-    id,
-    material as Material,
-    title,
-    fileName,
-    buf.byteLength,
-    sourcePath,
-    contentHash,
-    input.uploadedBy,
-    now,
-    input.consentConfirmedBy,
-    consentAt,
-  );
-
-  return { documentId: id, duplicated: false };
+export async function uploadDocument(db: Db, cfg: AppConfig, input: UploadInput): Promise<UploadResult> {
+  const prepared = await prepareDocumentUpload(cfg, input);
+  const existing = findByContentHash(db, prepared.contentHash, embeddingModelKey(cfg));
+  if (existing !== undefined) return { documentId: existing.id, duplicated: true };
+  prepared.storeOriginal();
+  prepared.insert(db);
+  return { documentId: prepared.id, duplicated: false };
 }

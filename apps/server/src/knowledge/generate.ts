@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto';
 import { contentText, type AssistantMessage, type MutableModels, type Usage } from '@earendil-works/pi-ai';
 import { Agent, type AgentEvent } from '@earendil-works/pi-agent-core';
-import { AppError, KNOWLEDGE_MAX_WALL_MS, type RunUsage } from '@knowpilot/shared';
+import { AppError, KNOWLEDGE_MAX_WALL_MS, type KnowledgeDraftSource, type RunUsage } from '@knowpilot/shared';
 import { createStreamFn } from '../agent/stream.ts';
 import { DEFAULT_REASONER_MODEL, DEEPSEEK, resolveRuntimeModel } from '../agent/models.ts';
 import { requireModelSettings } from '../agent/model-config.ts';
@@ -35,6 +35,7 @@ export interface GenerateInput {
   /** 提交人 id；管理端/脚本可能为 null。 */
   userId: string | null;
   requestId?: string;
+  sourceKind?: KnowledgeDraftSource['kind'];
 }
 
 export interface GenerateOutput {
@@ -100,7 +101,7 @@ export async function generateDrafts(
       apiKey: settings.apiKey,
     }),
     initialState: {
-      systemPrompt: buildKnowledgePrompt(),
+      systemPrompt: buildKnowledgePrompt(input.sourceKind),
       model,
       tools: [submitTool],
     },

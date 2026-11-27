@@ -7,6 +7,7 @@ import {
 } from '@knowpilot/shared';
 import { apiGet, isAbort, toApiError, type ApiError } from '../api.ts';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
+import { DraftSourceAction } from './knowledge/DraftSourceAction.tsx';
 import { FileTypeIcon } from '../components/FileTypeIcon.tsx';
 
 /**
@@ -62,6 +63,9 @@ export function ChunkPage() {
           {context.archivedIndexVersion === undefined ? '下载原件' : '下载当前原件'}
         </a>
       </div>
+
+      {context.archivedIndexVersion === undefined && context.sourceVersion !== undefined &&
+        <DraftSourceAction source={{ kind: 'document', id: doc.id, chunkId: chunk.id, version: context.sourceVersion }} />}
 
       <div className="chunk-location">
         <span className="pill">{MATERIAL_LABELS[doc.material]}</span>

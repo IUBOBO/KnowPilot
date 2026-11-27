@@ -19,8 +19,6 @@ import {
   hasPermission,
   isKnowledgeResubmittable,
   JOURNAL_SYSTEMS,
-  KNOWLEDGE_MAX_INPUT_CHARS,
-  KNOWLEDGE_MIN_INPUT_CHARS,
   KNOWLEDGE_RESOLUTIONS,
   KNOWLEDGE_STATUSES,
   KNOWLEDGE_STATUS_LABELS,
@@ -148,7 +146,6 @@ import {
   type SearchResponse,
   type CreateCodeAssetResponse,
   type CreateJournalResponse,
-  type CreateKnowledgeDraftsResponse,
   type CreateSubmissionResponse,
   type CreateSubmissionRoundResponse,
   type CreateUploadRequest,
@@ -311,10 +308,12 @@ import { isInside } from './paths.ts';
 import { ingestDocument } from './documents/ingest.ts';
 import { admitEntry } from './knowledge/admit.ts';
 import { detectConflict } from './knowledge/conflict.ts';
-import { generateDrafts } from './knowledge/generate.ts';
+import {
+  assertKnowledgeDraftReady, assertKnowledgeDraftSource, createKnowledgeDrafts, editKnowledgeDraft, presentKnowledgeEntry,
+  withKnowledgeDraftMutation,
+} from './knowledge/drafts.ts';
 import {
   findById as findEntry,
-  insertEntries,
   insertResubmission,
   listByGroup,
   listReviewQueue,
@@ -3427,58 +3426,24 @@ export function createApp(deps: AppDeps): Hono<Env> {
   //   卡点 GC-12 要求草案**未确认前检索不到**。所以草案先待在索引之外的表里，
   //   确认时才物化成一份 documents（那是后面的单元）。
   app.post('/api/v1/knowledge/drafts', async (c) => {
-    const body = await readJsonObject(c);
-
-    // 与提问/上传同一条闸门：内容会发往云端模型，必须显式确认。
-    // 在这里拦而不是只靠界面禁用按钮 —— 脚本和 curl 都会绕过界面。
-    if (body['consentConfirmed'] !== true) {
-      throw new AppError(
-        'invalid_argument',
-        '沉淀知识会把这段内容发送至云端模型处理，需要先确认。' +
-          '请在请求体里带上 "consentConfirmed": true。',
-      );
-    }
-
-    const text = readKnowledgeText(body['text']);
     const user = c.get('user');
-    if (user === null) {
-      // 闸门要求 knowledge.submit（登录才有），走到这里 user 不该是 null。
-      throw new AppError('unauthenticated', '请先登录。');
-    }
+    if (user === null) throw new AppError('unauthenticated', '请先登录。');
+    c.header('Cache-Control', 'private, no-store');
+    const result = await createKnowledgeDrafts(deps, user, await readJsonObject(c), c.get('requestId'));
+    return c.json(result, 201);
+  });
 
-    const out = await generateDrafts(
-      { db: deps.db, config: deps.config, models: deps.models },
-      { text, userId: user.id, requestId: c.get('requestId') },
-    );
-
-    // 【为什么落库在模型调用之后】模型失败/超时/零产出都在 generateDrafts 里抛错，
-    //   走到这里就一定有一组草案 —— 于是"库里出现了一组草案"与"用户看到了一组
-    //   草案"是同一件事，不会出现半截状态。
-    const groupId = randomUUID();
-    const observedAt = new Date().toISOString();
-    insertEntries(
-      deps.db,
-      out.drafts.map((d) => ({
-        id: randomUUID(),
-        kind: d.kind,
-        content: d.content,
-        sourceType: 'conversation',
-        sourceId: null,
-        sessionId: null,
-        observedAt,
-        groupId,
-        createdBy: user.id,
-      })),
-    );
-
-    // 回读而不是用内存里的草案：这样返回的 `KnowledgeEntry` 与之后 `GET /knowledge`
-    // 读到的是同一份形状（含 title / createdByName 等派生字段），前端不必为
-    // "刚生成"和"再刷新"写两套渲染。
-    const entries = listByGroup(deps.db, groupId);
-    return c.json({ groupId, entries } satisfies CreateKnowledgeDraftsResponse, 201);
+  app.patch('/api/v1/knowledge/:id/draft', async (c) => {
+    const user = c.get('user');
+    if (user === null) throw new AppError('unauthenticated', '请先登录。');
+    c.header('Cache-Control', 'private, no-store');
+    const body = await readJsonObject(c);
+    const entry = editKnowledgeDraft(deps.db, user, c.req.param('id'), body);
+    return c.json({ entry });
   });
 
   app.get('/api/v1/knowledge', (c) => {
+    c.header('Cache-Control', 'private, no-store');
     const limit = parseLimit(c.req.query('limit'), 50, 200);
     const status = parseKnowledgeStatus(c.req.query('status'));
     const user = c.get('user');
@@ -3486,7 +3451,8 @@ export function createApp(deps: AppDeps): Hono<Env> {
     // （见 listVisible 的说明）。它不影响 knowledgeScope 那层"能读全部"的判据。
     const canReview = user !== null && hasPermission(user.role, 'knowledge.review');
     return c.json({
-      items: listVisible(deps.db, limit, knowledgeScope(user), status, canReview),
+      items: listVisible(deps.db, limit, knowledgeScope(user), status, canReview)
+        .map((entry) => presentKnowledgeEntry(entry, user, deps.db)),
     } satisfies ListKnowledgeEntriesResponse);
   });
 
@@ -3512,73 +3478,82 @@ export function createApp(deps: AppDeps): Hono<Env> {
     //   groupId 会收到 200 + 一串 skipped，等于**确认了这个批次号存在**。
     //   所以不可见的整组一律按"不存在"处理（404），与 code-assets 的
     //   assertCanWriteAsset 是同一条不泄露存在性的做法。
-    const visible = all.filter((e) => e.createdById === user.id || canReview);
+    const visible = all.filter((e) => e.createdById === user.id || (canReview && e.note?.draftSource === undefined));
     if (visible.length === 0) {
       throw new AppError('not_found', '没有这一组待确认的知识草案。');
     }
 
     const results: { entryId: string; outcome: 'active' | 'conflicted' | 'skipped'; message: string }[] = [];
-    for (const entry of visible) {
-      // 幂等：已生效/已驳回/已被取代的条目原样跳过。用户重复点确认是常事
-      // （网络慢、页面没刷新），把它当错误反而是错的。
-      if (entry.status !== 'proposed') {
-        results.push({
-          entryId: entry.id,
-          outcome: 'skipped',
-          message: `这条已经是「${KNOWLEDGE_STATUS_LABELS[entry.status]}」，不用再确认。`,
-        });
-        continue;
-      }
+    for (const candidate of visible) {
       try {
-        // ── 冲突检测（阶段 5 单元 D）──
-        // 在**入库之前**做：撞上了就不该建文档（建了就搜得到了，等于绕过了裁决）。
-        const check = await detectConflict(deps.db, deps.config, entry);
-        if (check.kind === 'conflict') {
-          markConflicted(deps.db, entry.id, { conflict: check.conflict });
+        await withKnowledgeDraftMutation(deps.db, candidate.id, async () => {
+          const entry = findEntry(deps.db, candidate.id);
+          if (entry === null || entry.status !== 'proposed') {
+            const message = entry === null ? '这条草稿已不存在。'
+              : `这条已经是「${KNOWLEDGE_STATUS_LABELS[entry.status]}」，不用再确认。`;
+            results.push({ entryId: candidate.id, outcome: 'skipped', message });
+            return;
+          }
+          assertKnowledgeDraftReady(deps.db, entry);
+          const check = await detectConflict(deps.db, deps.config, entry);
+          assertKnowledgeDraftReady(deps.db, entry);
+          if (check.kind === 'conflict') {
+            const note = { ...entry.note, conflict: check.conflict };
+            if (entry.note?.draftSource === undefined) {
+              markConflicted(deps.db, entry.id, note);
+            } else {
+              deps.db.exec('BEGIN IMMEDIATE');
+              try {
+                assertKnowledgeDraftReady(deps.db, entry);
+                markConflicted(deps.db, entry.id, note);
+                deps.db.exec('COMMIT');
+              } catch (error) {
+                deps.db.exec('ROLLBACK');
+                throw error;
+              }
+            }
+            results.push({
+              entryId: entry.id,
+              outcome: 'conflicted',
+              message: `与一条已有知识相似度 ${check.conflict.score.toFixed(3)}（阈值 ${check.conflict.threshold}），已挂起等待裁决，没有入库。`,
+            });
+            return;
+          }
+          const note = check.kind === 'skipped' ? { ...entry.note, reason: check.reason } : entry.note;
+          const admitted = await admitEntry(deps.db, deps.config, {
+            entry,
+            actor: { id: user.id },
+            note,
+            ...(entry.note?.draftSource === undefined ? {} : {
+              revalidate: () => assertKnowledgeDraftReady(deps.db, entry),
+            }),
+          });
           results.push({
             entryId: entry.id,
-            outcome: 'conflicted',
-            message:
-              `与一条已有知识相似度 ${check.conflict.score.toFixed(3)}（阈值 ${check.conflict.threshold}），` +
-              '已挂起等待裁决，没有入库。',
-          });
-          continue;
-        }
-
-        // 两种非冲突结局：clear 时 note 为 null；skipped 时**如实记下"这次没查"**。
-        // 不能把 skipped 也写成 null —— 那在库和界面上都成了"查过且不冲突"。
-        const note = check.kind === 'skipped' ? { reason: check.reason } : null;
-        const admitted = await admitEntry(deps.db, deps.config, {
-          entry,
-          actor: { id: user.id },
-          note,
-        });
-        results.push({
-          entryId: entry.id,
-          outcome: 'active',
-          message:
-            (admitted.duplicated
+            outcome: 'active',
+            message: (admitted.duplicated
               ? '已确认。库中已有一份内容完全相同的文档，这条复用了它 —— 检索到的是同一份。'
               : '已确认并入库，现在检索得到了。') +
-            (check.kind === 'skipped' ? `（注意：${check.reason}）` : ''),
+              (check.kind === 'skipped' ? `（注意：${check.reason}）` : ''),
+          });
         });
       } catch (err) {
-        // 单条失败不拖垮整组，但**必须说清是这条失败了、为什么**。
         const reason = err instanceof AppError ? err.message : '入库时发生未预期的错误';
-        console.error(`[${c.get('requestId')}] 知识条目 ${entry.id} 入库失败：`, err);
-        results.push({ entryId: entry.id, outcome: 'skipped', message: `这条没能入库：${reason}` });
+        console.error(`[${c.get('requestId')}] 知识条目 ${candidate.id} 入库失败：`, err);
+        results.push({ entryId: candidate.id, outcome: 'skipped', message: `这条没能入库：${reason}` });
       }
     }
 
     return c.json({ results } satisfies ConfirmKnowledgeGroupResponse);
   });
 
-  // 审核队列：全部人的待确认 + 冲突条目。响应里带上当前阈值 ——
+  // 审核队列只显示主动提交的冲突条目。响应带上当前阈值 ——
   // 界面必须说清"≥ 多少会挂起"，否则用户不知道一条为什么被拦下。
   app.get('/api/v1/knowledge/review', (c) => {
+    c.header('Cache-Control', 'private, no-store');
     const limit = parseLimit(c.req.query('limit'), 100, 500);
     return c.json({
-      items: listReviewQueue(deps.db, limit),
+      items: listReviewQueue(deps.db, limit).map((entry) => presentKnowledgeEntry(entry, c.get('user'), deps.db)),
       threshold: deps.config.knowledgeConflictThreshold,
     } satisfies KnowledgeReviewQueueResponse);
   });
@@ -3593,22 +3568,23 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const id = c.req.param('id');
     const entry = findEntry(deps.db, id);
     const canReview = hasPermission(user.role, 'knowledge.review');
-    // 不存在与不可见**回同一个 404**：否则"这条存不存在"就能被外人用状态码探出来。
-    if (entry === null || (entry.createdById !== user.id && !canReview)) {
+    if (entry === null || (entry.createdById !== user.id && (!canReview || entry.note?.draftSource !== undefined))) {
       throw new AppError('not_found', '没有这条知识条目。');
     }
-    if (entry.status !== 'proposed') {
-      throw new AppError(
-        'invalid_argument',
-        `这条已经是「${KNOWLEDGE_STATUS_LABELS[entry.status]}」，不能再驳回。`,
-      );
-    }
+    return withKnowledgeDraftMutation(deps.db, id, async () => {
+      if (entry.status !== 'proposed') {
+        throw new AppError(
+          'invalid_argument',
+          `这条已经是「${KNOWLEDGE_STATUS_LABELS[entry.status]}」，不能再驳回。`,
+        );
+      }
 
-    const reason = readOptionalReason(body['reason'], '驳回原因');
-    markRejected(deps.db, id, reason === null ? null : { reason });
-    const after = findEntry(deps.db, id);
-    if (after === null) throw new AppError('internal', '驳回后回读失败。');
-    return c.json({ entry: after } satisfies RejectKnowledgeResponse);
+      const reason = readOptionalReason(body['reason'], '驳回原因');
+      markRejected(deps.db, id, reason === null ? entry.note : { ...entry.note, reason });
+      const after = findEntry(deps.db, id);
+      if (after === null) throw new AppError('internal', '驳回后回读失败。');
+      return c.json({ entry: presentKnowledgeEntry(after, user, deps.db) } satisfies RejectKnowledgeResponse);
+    });
   });
 
   // 重新提交：把一条已驳回 / 已撤回的知识，作为一条**新草案**提回来。
@@ -3623,7 +3599,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const source = findEntry(deps.db, c.req.param('id'));
     const canReview = hasPermission(user.role, 'knowledge.review');
     // 不存在与不可见回同一个 404（同驳回）：不让人拿状态码探"这条存不存在"。
-    if (source === null || (source.createdById !== user.id && !canReview)) {
+    if (source === null || (source.createdById !== user.id && (!canReview || source.note?.draftSource !== undefined))) {
       throw new AppError('not_found', '没有这条知识条目。');
     }
     if (!isKnowledgeResubmittable(source.status)) {
@@ -3634,6 +3610,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
       );
     }
 
+    assertKnowledgeDraftSource(deps.db, source);
     const id = randomUUID();
     insertResubmission(deps.db, {
       id,
@@ -3643,10 +3620,11 @@ export function createApp(deps: AppDeps): Hono<Env> {
       groupId: randomUUID(),
       createdBy: user.id,
       sourceEntryId: source.id,
+      source,
     });
     const after = findEntry(deps.db, id);
     if (after === null) throw new AppError('internal', '重新提交后回读失败。');
-    return c.json({ entry: after } satisfies ResubmitKnowledgeResponse);
+    return c.json({ entry: presentKnowledgeEntry(after, user, deps.db) } satisfies ResubmitKnowledgeResponse);
   });
 
   // 撤回一条已生效的知识：把它从索引里撤下。**不可撤销**（要恢复只能重新提交）。
@@ -3661,7 +3639,8 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const id = c.req.param('id');
     const entry = findEntry(deps.db, id);
     const canReview = hasPermission(user.role, 'knowledge.review');
-    if (entry === null || (entry.createdById !== user.id && !canReview)) {
+    if (entry === null || (entry.createdById !== user.id &&
+        (!canReview || (entry.note?.draftSource !== undefined && entry.note.draftSubmitted !== true)))) {
       throw new AppError('not_found', '没有这条知识条目。');
     }
     if (entry.status !== 'active') {
@@ -3684,7 +3663,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
     });
     const after = findEntry(deps.db, id);
     if (after === null) throw new AppError('internal', '撤回后回读失败。');
-    return c.json({ entry: after, documentRemoved } satisfies WithdrawKnowledgeResponse);
+    return c.json({ entry: presentKnowledgeEntry(after, user, deps.db), documentRemoved } satisfies WithdrawKnowledgeResponse);
   });
 
   // 裁决冲突。三种选择，见 shared 的 KNOWLEDGE_RESOLUTION_LABELS。
@@ -3699,87 +3678,94 @@ export function createApp(deps: AppDeps): Hono<Env> {
     const id = c.req.param('id');
     const resolution = readResolution(body['resolution']);
     const entry = findEntry(deps.db, id);
-    if (entry === null) throw new AppError('not_found', '没有这条知识条目。');
-    if (entry.status !== 'conflicted') {
-      throw new AppError(
-        'invalid_argument',
-        `这条现在是「${KNOWLEDGE_STATUS_LABELS[entry.status]}」，只有「冲突待裁决」的条目需要裁决。`,
-      );
+    if (entry === null || (entry.note?.draftSource !== undefined && entry.note.draftSubmitted !== true &&
+        entry.createdById !== user.id)) {
+      throw new AppError('not_found', '没有这条知识条目。');
     }
+    return withKnowledgeDraftMutation(deps.db, id, async () => {
+      if (entry.status !== 'conflicted') {
+        throw new AppError(
+          'invalid_argument',
+          `这条现在是「${KNOWLEDGE_STATUS_LABELS[entry.status]}」，只有「冲突待裁决」的条目需要裁决。`,
+        );
+      }
 
-    const now = new Date().toISOString();
-    const conflict = entry.note?.conflict;
+      const now = new Date().toISOString();
+      const conflict = entry.note?.conflict;
 
-    // ── 驳回本条：最省事的一条。新条落终态，旧条一个字节都不动。 ──
-    if (resolution === 'reject') {
-      markRejected(deps.db, id, {
+      // ── 驳回本条：最省事的一条。新条落终态，旧条一个字节都不动。 ──
+      if (resolution === 'reject') {
+        markRejected(deps.db, id, {
+          ...(entry.note ?? {}),
+          resolution: { kind: 'reject', by: user.id, at: now },
+        });
+        const after = findEntry(deps.db, id);
+        if (after === null) throw new AppError('internal', '裁决后回读失败。');
+        return c.json({ entry: presentKnowledgeEntry(after, user, deps.db), supersededEntryId: null } satisfies ResolveKnowledgeResponse);
+      }
+
+      // 「取代已有」必须有明确的取代对象。拿不到邻居（note 坏了、或邻居已被删）
+      // 就不能假装能做到 —— 静默降级成"允许并存"会让用户以为旧的已经被撤下了。
+      if (resolution === 'supersede' && conflict === undefined) {
+        throw new AppError(
+          'invalid_argument',
+          '这条记录里没有冲突对象，无法「取代已有」。请改用「允许并存」或「驳回本条」。',
+        );
+      }
+
+      const note = {
         ...(entry.note ?? {}),
-        resolution: { kind: 'reject', by: user.id, at: now },
+        resolution: {
+          kind: resolution,
+          by: user.id,
+          at: now,
+          ...(resolution === 'supersede' && conflict !== undefined
+            ? { supersededEntryId: conflict.neighborEntryId }
+            : {}),
+        },
+      };
+
+      assertKnowledgeDraftReady(deps.db, entry);
+      const admitted = await admitEntry(deps.db, deps.config, {
+        entry,
+        actor: { id: user.id },
+        note,
+        ...(entry.note?.draftSource === undefined ? {} : { revalidate: () => assertKnowledgeDraftReady(deps.db, entry) }),
       });
+
+      let supersededEntryId: string | null = null;
+      if (resolution === 'supersede' && conflict !== undefined) {
+        const neighbor = findEntry(deps.db, conflict.neighborEntryId);
+        if (neighbor !== null) {
+          supersededEntryId = neighbor.id;
+          // 【顺序很关键：先撤索引，再标状态】
+          //   反过来的中间态是"状态说被取代了、内容还搜得到"，比"文档没了、状态还没
+          //   改过来"糟得多。
+          // 【为什么用带引用计数的守卫，而不是裸 DELETE】两条一字不差的知识会共用
+          //   同一份文档（uploadDocument 的 content_hash 去重）；"新条与邻居同文档"
+          //   只是它的一种情形，守卫一并覆盖，不再单独判断 admitted.documentId。
+          if (neighbor.documentId !== null) {
+            const removed = withdrawDocumentIfUnreferenced(deps.db, neighbor.documentId, neighbor.id);
+            if (removed === 0) {
+              // 两种可能：文档已不在表里（异常），或仍有别的已生效条目指着它（正常）。
+              // 不再为后者报警 —— 共用文档是预期内的情形，不是故障。
+              console.warn(
+                `[${c.get('requestId')}] 取代裁决：邻居 ${neighbor.id} 的文档 ` +
+                  `${neighbor.documentId} 未被撤下（已不存在，或仍有别的已生效条目引用它）。`,
+              );
+            }
+          }
+          markSuperseded(deps.db, neighbor.id, {
+            ...(neighbor.note ?? {}),
+            resolution: { kind: 'supersede', by: user.id, at: now, supersededEntryId: neighbor.id },
+          });
+        }
+      }
+
       const after = findEntry(deps.db, id);
       if (after === null) throw new AppError('internal', '裁决后回读失败。');
-      return c.json({ entry: after, supersededEntryId: null } satisfies ResolveKnowledgeResponse);
-    }
-
-    // 「取代已有」必须有明确的取代对象。拿不到邻居（note 坏了、或邻居已被删）
-    // 就不能假装能做到 —— 静默降级成"允许并存"会让用户以为旧的已经被撤下了。
-    if (resolution === 'supersede' && conflict === undefined) {
-      throw new AppError(
-        'invalid_argument',
-        '这条记录里没有冲突对象，无法「取代已有」。请改用「允许并存」或「驳回本条」。',
-      );
-    }
-
-    const note = {
-      ...(entry.note ?? {}),
-      resolution: {
-        kind: resolution,
-        by: user.id,
-        at: now,
-        ...(resolution === 'supersede' && conflict !== undefined
-          ? { supersededEntryId: conflict.neighborEntryId }
-          : {}),
-      },
-    };
-
-    const admitted = await admitEntry(deps.db, deps.config, {
-      entry,
-      actor: { id: user.id },
-      note,
+      return c.json({ entry: presentKnowledgeEntry(after, user, deps.db), supersededEntryId } satisfies ResolveKnowledgeResponse);
     });
-
-    let supersededEntryId: string | null = null;
-    if (resolution === 'supersede' && conflict !== undefined) {
-      const neighbor = findEntry(deps.db, conflict.neighborEntryId);
-      if (neighbor !== null) {
-        supersededEntryId = neighbor.id;
-        // 【顺序很关键：先撤索引，再标状态】
-        //   反过来的中间态是"状态说被取代了、内容还搜得到"，比"文档没了、状态还没
-        //   改过来"糟得多。
-        // 【为什么用带引用计数的守卫，而不是裸 DELETE】两条一字不差的知识会共用
-        //   同一份文档（uploadDocument 的 content_hash 去重）；"新条与邻居同文档"
-        //   只是它的一种情形，守卫一并覆盖，不再单独判断 admitted.documentId。
-        if (neighbor.documentId !== null) {
-          const removed = withdrawDocumentIfUnreferenced(deps.db, neighbor.documentId, neighbor.id);
-          if (removed === 0) {
-            // 两种可能：文档已不在表里（异常），或仍有别的已生效条目指着它（正常）。
-            // 不再为后者报警 —— 共用文档是预期内的情形，不是故障。
-            console.warn(
-              `[${c.get('requestId')}] 取代裁决：邻居 ${neighbor.id} 的文档 ` +
-                `${neighbor.documentId} 未被撤下（已不存在，或仍有别的已生效条目引用它）。`,
-            );
-          }
-        }
-        markSuperseded(deps.db, neighbor.id, {
-          ...(neighbor.note ?? {}),
-          resolution: { kind: 'supersede', by: user.id, at: now, supersededEntryId: neighbor.id },
-        });
-      }
-    }
-
-    const after = findEntry(deps.db, id);
-    if (after === null) throw new AppError('internal', '裁决后回读失败。');
-    return c.json({ entry: after, supersededEntryId } satisfies ResolveKnowledgeResponse);
   });
 
   // ── 巡检（阶段 6）──────────────────────────────────────────
@@ -4493,34 +4479,6 @@ function parseFeedbackNote(raw: unknown): string | null {
     );
   }
   return note;
-}
-
-/**
- * 知识沉淀的白话输入。
- *
- * 【为什么上下限都要有】见 shared/knowledge.ts 里两个常量的注释：太短会让模型
- *   凭空编一条假知识，太长会撑爆或悄悄截断上下文。两者都在入口挡回去，而不是
- *   让模型去面对一个它处理不好的输入 —— 后者的失败方式是"安静地给出坏结果"。
- */
-function readKnowledgeText(raw: unknown): string {
-  if (typeof raw !== 'string') {
-    throw new AppError('invalid_argument', '请填写要沉淀的内容。');
-  }
-  const text = raw.trim();
-  if (text.length < KNOWLEDGE_MIN_INPUT_CHARS) {
-    throw new AppError(
-      'invalid_argument',
-      `内容太短，至少 ${KNOWLEDGE_MIN_INPUT_CHARS} 个字 —— 太短没法整理成一条知识，请说得具体一些。`,
-    );
-  }
-  if (text.length > KNOWLEDGE_MAX_INPUT_CHARS) {
-    throw new AppError(
-      'invalid_argument',
-      `内容太长（${text.length} 字，上限 ${KNOWLEDGE_MAX_INPUT_CHARS} 字）。` +
-        '要沉淀长文档请走「知识库」上传那份文件；这个入口适合一段口述。',
-    );
-  }
-  return text;
 }
 
 /** 驳回 / 撤回原因的字符上限。200 字足够说清"为什么不采纳"，又不至于让这一列无限长。 */

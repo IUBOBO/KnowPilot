@@ -23,6 +23,7 @@ import { SkeletonList } from '../components/Skeleton.tsx';
 import { useToast } from '../components/Toast.tsx';
 import { useAuth } from '../auth.tsx';
 import { fmtDateTime } from '../format.ts';
+import { DraftEditor, DraftProvenance } from './knowledge/DraftEditor.tsx';
 import { groupByBatch, knowledgeStatusTone } from '../knowledge-view.ts';
 
 const CONSENT_KEY = 'knowpilot.knowledge.consent.v1';
@@ -409,6 +410,8 @@ export function KnowledgePage() {
                 busy={busyGroup === g.groupId}
                 outcome={confirmOutcome !== null && confirmOutcome.groupId === g.groupId ? confirmOutcome.results : null}
                 canActOn={canActOn}
+                canEdit={(entry) => entry.createdById !== null && entry.createdById === me}
+                onEditSaved={loadList}
                 onConfirm={() => void onConfirmGroup(g.groupId)}
                 onReject={(entry) => {
                   setRejectError(null);
@@ -516,6 +519,8 @@ function Batch({
   busy,
   outcome,
   canActOn,
+  canEdit,
+  onEditSaved,
   onConfirm,
   onReject,
   onWithdraw,
@@ -527,6 +532,8 @@ function Batch({
   busy: boolean;
   outcome: ConfirmKnowledgeGroupResponse['results'] | null;
   canActOn: (entry: KnowledgeEntry) => boolean;
+  canEdit: (entry: KnowledgeEntry) => boolean;
+  onEditSaved: () => Promise<void>;
   onConfirm: () => void;
   onReject: (entry: KnowledgeEntry) => void;
   onWithdraw: (entry: KnowledgeEntry) => void;
@@ -562,6 +569,8 @@ function Batch({
             key={entry.id}
             entry={entry}
             canAct={canActOn(entry)}
+            canEdit={canEdit(entry)}
+            onEditSaved={onEditSaved}
             onReject={() => onReject(entry)}
             onWithdraw={() => onWithdraw(entry)}
             onResubmit={() => onResubmit(entry)}
@@ -578,6 +587,8 @@ function Batch({
 function EntryRow({
   entry,
   canAct,
+  canEdit,
+  onEditSaved,
   onReject,
   onWithdraw,
   onResubmit,
@@ -585,6 +596,8 @@ function EntryRow({
 }: {
   entry: KnowledgeEntry;
   canAct: boolean;
+  canEdit: boolean;
+  onEditSaved: () => Promise<void>;
   onReject: () => void;
   onWithdraw: () => void;
   onResubmit: () => void;
@@ -606,6 +619,8 @@ function EntryRow({
       </div>
 
       <p className="kb-entry-body">{entry.content}</p>
+      <DraftProvenance entry={entry} />
+      {entry.status === 'proposed' && canEdit && <DraftEditor entry={entry} onSaved={onEditSaved} />}
 
       <p className="kb-entry-meta">
         <span className="record-field-label">提交人</span> <span className="record-person-value">{entry.createdByName ?? '未记录'}</span>

@@ -30,6 +30,12 @@ const SubmitEntriesParams = Type.Object({
         description:
           '这条知识的类型：fact=事实，decision=决定，lesson=教训，open_loop=未决事项。',
       }),
+      claim: Type.Optional(StringEnum(['experience', 'literature', 'inference'])),
+      evidence: Type.Optional(Type.String()),
+      question: Type.Optional(Type.String()),
+      conclusion: Type.Optional(Type.String()),
+      conditions: Type.Optional(Type.String()),
+      tags: Type.Optional(Type.Array(Type.String())),
       content: Type.String({
         description:
           '这条知识的中文正文，一条只讲一件事，用完整陈述句、把主语写清楚。不要写标题或序号。',
@@ -48,6 +54,12 @@ export type SubmitEntriesArgs = Static<typeof SubmitEntriesParams>;
 export interface DraftInput {
   kind: KnowledgeKind;
   content: string;
+  claim?: string;
+  evidence?: string;
+  question?: string;
+  conclusion?: string;
+  conditions?: string;
+  tags?: readonly string[];
 }
 
 /**
@@ -71,7 +83,7 @@ export function createSubmitEntriesTool(
       // content 去空白后为空的条目直接丢弃：模型偶尔会把占位空串塞进来，
       // 与其落一条空知识，不如少一条。
       const drafts: DraftInput[] = params.entries
-        .map((e) => ({ kind: e.kind, content: e.content.trim() }))
+        .map((entry) => ({ ...entry, content: entry.content.trim() }))
         .filter((e) => e.content !== '');
       sink(drafts);
       return {

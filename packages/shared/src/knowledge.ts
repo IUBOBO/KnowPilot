@@ -102,10 +102,10 @@ export function isKnowledgeResubmittable(status: KnowledgeStatus): boolean {
 }
 
 /**
- * 知识来源。v1 只产出 `conversation`（`/knowledge` 页的一句白话输入）；
- * `upload` / `manual` 先写进词表占位，尚无写入路径。
+ * 知识条目的持久化来源大类。旧白话草稿仍可能为 conversation。
+ * 新条目的具体来源、快照版本及核验情况见 draftSource。
  */
-export const KNOWLEDGE_SOURCE_TYPES = ['conversation', 'upload', 'manual'] as const;
+export const KNOWLEDGE_SOURCE_TYPES = ['conversation', 'upload', 'manual', 'note'] as const;
 
 export type KnowledgeSourceType = (typeof KNOWLEDGE_SOURCE_TYPES)[number];
 
@@ -161,7 +161,51 @@ export interface KnowledgeWithdrawRecord {
  * 裁决过记 `resolution`；驳回、撤回或"本次没能做冲突检测"记 `reason`；
  * 撤回记 `withdrawn`；重新提交记 `resubmittedFrom`。
  */
+/** UTF-16 offsets in the saved note body with line breaks normalized to LF. */
+export interface KnowledgeNoteSelection {
+  start: number;
+  end: number;
+}
+
+export type KnowledgeDraftSource =
+  | { kind: 'manual'; text: string }
+  | { kind: 'ask'; id: string; excerpt: string }
+  | { kind: 'note'; id: string; revision: number; selection?: KnowledgeNoteSelection }
+  | { kind: 'document'; id: string; version: string; chunkId: string };
+
+export type KnowledgeDraftOrigin = {
+  schemaVersion: 1;
+  id: string;
+  version: string;
+  excerpt: string;
+  excerptVerification: 'matched' | 'submitted';
+  by: string;
+  at: string;
+} & ({ kind: 'manual' | 'ask' } |
+  { kind: 'note'; selection?: KnowledgeNoteSelection } | { kind: 'document'; chunkId: string });
+
+export const KNOWLEDGE_CLAIM_LABELS = {
+  experience: '用户经验',
+  literature: '资料陈述',
+  inference: '问答推断',
+  unclassified: '待补充来源依据',
+  edited: '作者编辑',
+} as const;
+
+export interface KnowledgeDraftDetails {
+  claim: keyof typeof KNOWLEDGE_CLAIM_LABELS;
+  evidence?: string;
+  question?: string;
+  conclusion?: string;
+  conditions?: string;
+  tags?: readonly string[];
+}
+
 export interface KnowledgeNote {
+  draftSource?: KnowledgeDraftOrigin;
+  draftDetails?: KnowledgeDraftDetails;
+  draftSubmitted?: boolean;
+  revision?: number;
   conflict?: KnowledgeConflict;
   resolution?: KnowledgeResolutionRecord;
   withdrawn?: KnowledgeWithdrawRecord;
@@ -214,12 +258,11 @@ export interface KnowledgeEntry {
 }
 
 /** POST /api/v1/knowledge/drafts 的请求体。 */
-export interface CreateKnowledgeDraftsRequest {
-  /** 用户的一句白话。 */
-  text: string;
-  /** 与提问/上传同一条闸门：内容会发往云端模型，必须显式勾选确认。 */
-  consentConfirmed: boolean;
-}
+export type CreateKnowledgeDraftsRequest =
+  ({ text: string; source?: never } | { source: KnowledgeDraftSource; text?: never }) & {
+    /** 每次生成时均显式授权将所选内容发往模型。 */
+    consentConfirmed: boolean;
+  };
 
 export interface CreateKnowledgeDraftsResponse {
   /** 本批次号，确认整组时回传它。 */

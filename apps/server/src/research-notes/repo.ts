@@ -95,26 +95,32 @@ export function readOwnedAskQuestion(db: Db, owner: string, runId: string): stri
   return db.prepare('SELECT question FROM ask_records WHERE run_id = ? AND user_id = ?').get(runId, owner)?.question as string | undefined;
 }
 
+export function readAskNoteSources(db: Db, owner: string, runId: string): StoredNoteSource[] {
+  const row = db.prepare('SELECT citation_map_json,record_evidence_json FROM ask_run_traces WHERE run_id=? AND user_id=?')
+    .get(runId, owner) as { citation_map_json: string; record_evidence_json: string } | undefined;
+  if (row === undefined) return [];
+  const citations = JSON.parse(row.citation_map_json) as TraceCitationRef[];
+  const records = JSON.parse(row.record_evidence_json) as TraceRecordEvidence[];
+  return citations.map((citation) => ({
+    citationId: citation.id, locator: locatorFor(citation, records),
+    ...(citation.recordFingerprint === undefined ? {} : { recordFingerprint: citation.recordFingerprint }),
+  }));
+}
+
 function appendRuns(db: Db, owner: string, noteId: string, runs: readonly NoteRunInput[]) {
   if (runs.length === 0) return;
   const stored = db.prepare('SELECT run_id FROM research_note_runs WHERE note_id=?').all(noteId);
   const existing = new Set(stored.map((row) => row.run_id));
   const requested = runs.filter((run) => !existing.has(run.runId));
   if (existing.size + requested.length > NOTE_RUN_LIMIT) throw new AppError('invalid_argument', '此笔记关联的问答轮次已达上限。');
-  const trace = db.prepare('SELECT citation_map_json,record_evidence_json FROM ask_run_traces WHERE run_id=? AND user_id=?');
   const addRun = db.prepare('INSERT INTO research_note_runs(note_id,run_id,mode) VALUES(?,?,?)');
   const addSource = db.prepare('INSERT INTO research_note_sources(note_id,run_id,citation_id,locator_json) VALUES(?,?,?,?)');
   for (const run of requested) {
     if (readOwnedAskQuestion(db, owner, run.runId) === undefined) throw new AppError('not_found', '无法关联这次问答。');
     addRun.run(noteId, run.runId, run.mode);
-    const row = trace.get(run.runId, owner) as { citation_map_json: string; record_evidence_json: string } | undefined;
-    if (row === undefined) continue;
-    const citations = JSON.parse(row.citation_map_json) as TraceCitationRef[];
-    const records = JSON.parse(row.record_evidence_json) as TraceRecordEvidence[];
-    for (const c of citations) {
-      const locator = locatorFor(c, records);
-      addSource.run(noteId, run.runId, c.id, locator === null ? null : JSON.stringify({
-        ...locator, recordFingerprint: c.recordFingerprint,
+    for (const { citationId, locator, recordFingerprint } of readAskNoteSources(db, owner, run.runId)) {
+      addSource.run(noteId, run.runId, citationId, locator === null ? null : JSON.stringify({
+        ...locator, recordFingerprint,
       }));
     }
   }

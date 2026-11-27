@@ -105,6 +105,7 @@ export interface NewEntry {
   observedAt: string;
   groupId: string;
   createdBy: string;
+  note?: KnowledgeNote;
 }
 
 /**
@@ -114,16 +115,21 @@ export interface NewEntry {
  *   少了第三条，却不知道少的那条是模型没产出还是写库失败。整组原子落库之后，
  *   "返回的是什么，库里就是什么"。
  */
-export function insertEntries(db: Db, rows: readonly NewEntry[]): void {
+export function insertEntries(db: Db, rows: readonly NewEntry[], reuseGroup = false): void {
   if (rows.length === 0) return;
   const stmt = db.prepare(
     `INSERT INTO knowledge_entries
        (id, kind, status, content, source_type, source_id, session_id,
         observed_at, group_id, created_by, note)
-     VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?, ?, ?, NULL)`,
+     VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
-  db.exec('BEGIN');
+  db.exec('BEGIN IMMEDIATE');
   try {
+    if (reuseGroup && db.prepare('SELECT 1 FROM knowledge_entries WHERE group_id=? AND created_by=?')
+      .get(rows[0]!.groupId, rows[0]!.createdBy) !== undefined) {
+      db.exec('COMMIT');
+      return;
+    }
     for (const r of rows) {
       stmt.run(
         r.id,
@@ -135,6 +141,7 @@ export function insertEntries(db: Db, rows: readonly NewEntry[]): void {
         r.observedAt,
         r.groupId,
         r.createdBy,
+        noteParam(r.note ?? null),
       );
     }
     db.exec('COMMIT');
@@ -142,6 +149,17 @@ export function insertEntries(db: Db, rows: readonly NewEntry[]): void {
     db.exec('ROLLBACK');
     throw err;
   }
+}
+
+export function updateDraftContent(db: Db, args: {
+  id: string; owner: string; revision: number; content: string; kind: KnowledgeKind; note: KnowledgeNote;
+}): boolean {
+  const { changes } = db.prepare(
+    `UPDATE knowledge_entries SET content=?, kind=?, note=?
+      WHERE id=? AND created_by=? AND status='proposed'
+        AND COALESCE(CASE WHEN json_valid(note) THEN json_extract(note, '$.revision') END, 1)=?`,
+  ).run(args.content,args.kind,noteParam(args.note),args.id,args.owner,args.revision);
+  return changes === 1;
 }
 
 export function findById(db: Db, id: string): KnowledgeEntry | null {
@@ -191,7 +209,10 @@ export function listVisible(
   // canReadAll 只描述"这个人的范围"，不该在这里直接放行 —— 见上面的说明。
   const own = scopePredicate('created_by', { ...scope, canReadAll: false });
   // 参数顺序 = SQL 里占位符出现的顺序：own 的几个 → canReview 的 → status 的 → limit。
-  const clauses = [`(${own.sql} OR (? = 1 AND e.status <> 'proposed'))`];
+  const clauses = [`(${own.sql} OR (? = 1 AND e.status <> 'proposed' AND (
+    CASE WHEN json_valid(e.note) THEN json_type(e.note, '$.draftSource') IS NULL
+      OR json_extract(e.note, '$.draftSubmitted') = 1 ELSE 1 END
+  )))`];
   const params: (string | number | null)[] = [...own.params, canReview ? 1 : 0];
   if (status !== undefined) {
     clauses.push('e.status = ?');
@@ -249,13 +270,17 @@ export function markActive(
     `UPDATE knowledge_entries
         SET status = 'active', confirmed_by = ?, confirmed_at = ?, document_id = ?, note = ?
       WHERE id = ?`,
-  ).run(args.confirmedBy, args.confirmedAt, args.documentId, noteParam(args.note), args.id);
+  ).run(args.confirmedBy, args.confirmedAt, args.documentId, noteParam(submittedNote(args.note)), args.id);
+}
+
+function submittedNote(note: KnowledgeNote | null): KnowledgeNote | null {
+  return note?.draftSource === undefined ? note : { ...note, draftSubmitted: true };
 }
 
 /** 确认时判定冲突：落 conflicted，note 里带上撞上的对象与分数。 */
 export function markConflicted(db: Db, id: string, note: KnowledgeNote): void {
   db.prepare(`UPDATE knowledge_entries SET status = 'conflicted', note = ? WHERE id = ?`).run(
-    noteParam(note),
+    noteParam(submittedNote(note)),
     id,
   );
 }
@@ -308,23 +333,31 @@ export function insertResubmission(
     observedAt: string;
     groupId: string;
     createdBy: string;
-    /** 原条目 id，落进 `note.resubmittedFrom`，让界面能说清"这条是从哪来的"。 */
+    /** 保留原条目的来源与审阅信息，重新提交仍需独立确认。 */
     sourceEntryId: string;
+    source?: KnowledgeEntry;
   },
 ): void {
   db.prepare(
     `INSERT INTO knowledge_entries
        (id, kind, status, content, source_type, source_id, session_id,
         observed_at, group_id, created_by, note)
-     VALUES (?, ?, 'proposed', ?, 'conversation', NULL, NULL, ?, ?, ?, ?)`,
+     VALUES (?, ?, 'proposed', ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     args.id,
     args.kind,
     args.content,
+    args.source?.sourceType ?? 'conversation',
+    args.source?.sourceId ?? null,
+    args.source?.sessionId ?? null,
     args.observedAt,
     args.groupId,
     args.createdBy,
-    JSON.stringify({ resubmittedFrom: args.sourceEntryId }),
+    JSON.stringify({
+      ...(args.source?.note?.draftSource === undefined ? {} : { draftSource: args.source.note.draftSource }),
+      ...(args.source?.note?.draftDetails === undefined ? {} : { draftDetails: args.source.note.draftDetails }),
+      revision: 1, resubmittedFrom: args.sourceEntryId,
+    }),
   );
 }
 
