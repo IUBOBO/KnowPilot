@@ -286,11 +286,10 @@ export function markConflicted(db: Db, id: string, note: KnowledgeNote): void {
 }
 
 /** 驳回：落 deleted（终态），note 里记原因。 */
-export function markRejected(db: Db, id: string, note: KnowledgeNote | null): void {
-  db.prepare(`UPDATE knowledge_entries SET status = 'deleted', note = ? WHERE id = ?`).run(
-    noteParam(note),
-    id,
-  );
+export function markRejected(db: Db, id: string, note: KnowledgeNote | null, expected?: KnowledgeStatus): boolean {
+  const result = db.prepare(`UPDATE knowledge_entries SET status = 'deleted', note = ?
+    WHERE id = ? AND (? IS NULL OR status = ?)`).run(noteParam(note), id, expected ?? null, expected ?? null);
+  return result.changes !== 0;
 }
 
 /** 被取代：落 superseded（终态）。旧文档的撤下由上层另行处理。 */
@@ -356,6 +355,7 @@ export function insertResubmission(
     JSON.stringify({
       ...(args.source?.note?.draftSource === undefined ? {} : { draftSource: args.source.note.draftSource }),
       ...(args.source?.note?.draftDetails === undefined ? {} : { draftDetails: args.source.note.draftDetails }),
+      ...(args.source?.note?.draftSource === undefined ? {} : { lifecycleVersion: 1 }),
       revision: 1, resubmittedFrom: args.sourceEntryId,
     }),
   );

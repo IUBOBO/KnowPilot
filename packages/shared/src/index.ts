@@ -20,6 +20,7 @@ export * from './code-assets.ts';
 export * from './uploads.ts';
 export * from './organize.ts';
 export * from './knowledge.ts';
+export * from './knowledge-discovery.ts';
 export * from './research-notes.ts';
 export * from './patrol.ts';
 // 回答反馈（O5）：评分、踩的预设原因、管理端列表与导出草稿共用一套形状。

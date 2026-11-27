@@ -54,7 +54,8 @@ function safeFileName(title: string): string {
 export async function admitEntry(
   db: Db,
   cfg: AppConfig,
-  args: { entry: KnowledgeEntry; actor: AdmitActor; note: KnowledgeNote | null; revalidate?: () => void },
+  args: { entry: KnowledgeEntry; actor: AdmitActor; note: KnowledgeNote | null; revalidate?: () => void;
+    onPublished?: () => void },
 ): Promise<AdmitResult> {
   const { entry, actor } = args;
   const title = knowledgeTitle(entry.content, entry.kind);
@@ -84,13 +85,16 @@ export async function admitEntry(
   //   所以判据改成"这份文档此刻是不是就绪"，而不是"我这次是不是新建的"。
   //   真要跑的仍只有没就绪的那种，重复索引不会发生。
   const needsIngest = !up.duplicated || !isDocumentReady(db, cfg, up.documentId);
-  const finish = () => markActive(db, {
-    id: entry.id,
-    confirmedBy: actor.id,
-    confirmedAt: new Date().toISOString(),
-    documentId: up.documentId,
-    note: args.note,
-  });
+  const finish = () => {
+    markActive(db, {
+      id: entry.id,
+      confirmedBy: actor.id,
+      confirmedAt: new Date().toISOString(),
+      documentId: up.documentId,
+      note: args.note,
+    });
+    args.onPublished?.();
+  };
 
   const stagedOriginal = prepared?.stageOriginal();
   const publication = args.revalidate === undefined ? undefined : {

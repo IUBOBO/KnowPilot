@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { PageTitle } from '../components/PageTitle.tsx';
+import { DiscoveryPanel } from './knowledge/DiscoveryPanel.tsx';
 import {
   KNOWLEDGE_KIND_LABELS,
   KNOWLEDGE_MAX_INPUT_CHARS,
@@ -277,6 +278,7 @@ export function KnowledgePage() {
     <>
       <div className="page-head">
         <PageTitle icon="capture">知识沉淀</PageTitle>
+        <DiscoveryPanel />
         <Link to="/knowledge/notes">研究笔记</Link>
       </div>
       <p className="lead">输入口述或零散经验，AI 提炼成草案，确认后入库。</p>

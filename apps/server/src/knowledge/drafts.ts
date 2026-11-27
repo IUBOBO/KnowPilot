@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto';
 import {
   AppError, KNOWLEDGE_KINDS, KNOWLEDGE_MAX_INPUT_CHARS, hasPermission,
   type AuthUser, type CreateKnowledgeDraftsResponse, type KnowledgeDraftDetails,
-  type KnowledgeDraftOrigin, type KnowledgeEntry,
+  type ChunkContextResponse, type KnowledgeDraftOrigin, type KnowledgeEntry, type KnowledgeReviewSource,
 } from '@knowpilot/shared';
 import type { Db } from '../db/index.ts';
+import { getChunkContext } from '../documents/repo.ts';
 import { generateDrafts, type KnowledgeDeps } from './generate.ts';
 import { draftFingerprint, parseDraftSource, readDraftText, resolveDraftSource, revalidateDraftOrigin } from './draft-source.ts';
 import { findById, insertEntries, listByGroup, updateDraftContent } from './repo.ts';
@@ -86,7 +87,7 @@ export async function createKnowledgeDrafts(
       sourceType: origin.kind === 'ask' ? 'conversation' : origin.kind === 'document' ? 'upload' : origin.kind,
       sourceId: origin.kind === 'ask' ? null : origin.id, sessionId: origin.kind === 'ask' ? origin.id : null,
       observedAt: origin.at, groupId, createdBy: user.id, note: {
-        draftSource: origin, draftDetails: draftDetails(origin, draft), revision: 1,
+        draftSource: origin, draftDetails: draftDetails(origin, draft), revision: 1, lifecycleVersion: 1,
       },
     })), true);
     return current();
@@ -133,6 +134,40 @@ export function editKnowledgeDraft(db: Db, user: AuthUser, id: string, raw: Reco
   return saved;
 }
 
+/** Reviewers get a verification result for private sources, and a versioned reader only for visible documents. */
+export function inspectReviewSource(db: Db, viewer: AuthUser, entry: KnowledgeEntry):
+  { summary: KnowledgeReviewSource; context?: ChunkContextResponse } | undefined {
+  const origin = entry.note?.draftSource;
+  if (!hasPermission(viewer.role, 'knowledge.review') || origin === undefined ||
+      (entry.status !== 'active' && (entry.status !== 'conflicted' || entry.note?.draftSubmitted !== true))) return undefined;
+  const unavailable = { summary: { kind: origin.kind, verification: 'unavailable' } } as const;
+  try {
+    assertKnowledgeDraftSource(db, entry);
+  } catch (error) {
+    if (error instanceof AppError && error.httpStatus >= 400 && error.httpStatus < 500) return unavailable;
+    throw error;
+  }
+
+  const summary: KnowledgeReviewSource = {
+    kind: origin.kind,
+    verification: origin.excerptVerification,
+    capturedAt: origin.at,
+    ...(origin.kind === 'note' || origin.kind === 'ask' ? { version: origin.version } : {}),
+  };
+  if (origin.kind !== 'document') return { summary };
+  if (!hasPermission(viewer.role, 'knowledge.read')) return unavailable;
+  const context = getChunkContext(db, origin.chunkId);
+  if (context === null || context.archivedIndexVersion !== undefined || context.document.id !== origin.id ||
+      context.sourceVersion === undefined) return unavailable;
+  return {
+    summary: { ...summary, version: context.sourceVersion, document: {
+      title: context.document.title,
+      locator: { kind: 'document', documentId: origin.id, chunkId: origin.chunkId, sourceVersion: context.sourceVersion },
+    } },
+    context,
+  };
+}
+
 export function presentKnowledgeEntry(entry: KnowledgeEntry, viewer: AuthUser | null, db?: Db): KnowledgeEntry {
   if (entry.note?.draftSource === undefined) return entry;
   let sourceAvailable = true;
@@ -143,11 +178,15 @@ export function presentKnowledgeEntry(entry: KnowledgeEntry, viewer: AuthUser | 
     sourceAvailable = false;
   }
   if (sourceAvailable && entry.createdById === viewer?.id) return entry;
-  const { draftSource: _, draftDetails, ...remaining } = entry.note;
+  const { draftSource: _, draftDetails, lifecycle, reviewSubmission: _submission, ...remaining } = entry.note;
   const hideContent = !sourceAvailable && entry.status !== 'active';
   return {
     ...entry, sourceId: null, sessionId: null,
     ...(hideContent ? { title: '来源已失效', content: '草稿来源已撤回、更新或不可访问。' } : {}),
-    note: { ...remaining, ...(draftDetails === undefined ? {} : { draftDetails: { claim: draftDetails.claim } }) },
+    note: {
+      ...remaining,
+      ...(lifecycle === undefined ? {} : { lifecycle: sourceAvailable ? lifecycle : { ...lifecycle, incomingContext: {} } }),
+      ...(draftDetails === undefined ? {} : { draftDetails: { claim: draftDetails.claim } }),
+    },
   };
 }

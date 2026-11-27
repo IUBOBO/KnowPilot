@@ -79,6 +79,7 @@ import {
   type HealthResponse,
   type IngestReport,
   type JournalSystem,
+  type KnowledgeEntry,
   type KnowledgeResolution,
   type KnowledgeReviewQueueResponse,
   type KnowledgeStatus,
@@ -307,9 +308,12 @@ import type { Db } from './db/index.ts';
 import { isInside } from './paths.ts';
 import { ingestDocument } from './documents/ingest.ts';
 import { admitEntry } from './knowledge/admit.ts';
-import { detectConflict } from './knowledge/conflict.ts';
+import { assertStillDirectPublication, checkDraftPublication, resolveLifecycle } from './knowledge/discovery-review.ts';
 import {
-  assertKnowledgeDraftReady, assertKnowledgeDraftSource, createKnowledgeDrafts, editKnowledgeDraft, presentKnowledgeEntry,
+  ignoreDiscovery, listDiscoveries, recordAskDiscovery, recordDiscovery, recordDocumentDiscovery, setDiscoveryEnabled,
+} from './knowledge/discovery.ts';
+import {
+  assertKnowledgeDraftReady, assertKnowledgeDraftSource, createKnowledgeDrafts, editKnowledgeDraft, inspectReviewSource, presentKnowledgeEntry,
   withKnowledgeDraftMutation,
 } from './knowledge/drafts.ts';
 import {
@@ -1050,6 +1054,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
       throw new AppError('internal', '文档刚写入却查不到，请把请求 ID 提供给管理员。');
     }
 
+    if (uploader !== null && document.status === 'ready' && document.firstChunkId !== null) {
+      suggestQuietly(() => recordDocumentDiscovery(deps.db, uploader, document.id, document.firstChunkId!, document.indexVersion));
+    }
     const body: UploadDocumentResponse = { document, duplicated: result.duplicated, ingest };
     // 201 = 新建；200 = 内容已存在，复用了原记录。状态码本身就是给客户端的信号。
     return c.json(body, result.duplicated ? 200 : 201);
@@ -1324,15 +1331,26 @@ export function createApp(deps: AppDeps): Hono<Env> {
    * 【为什么 askedAt 由调用方给】它是**运行开始**时刻，不是落库时刻；
    *   和 ask_records.asked_at 同源，两张表才能按时间对齐。
    */
-  function traceSink(userId: string | null, askedAt: string) {
+  function suggestQuietly(record: () => boolean): void {
+    try {
+      record();
+    } catch {
+      console.warn('知识建议未能登记，原操作已完成。');
+    }
+  }
+
+  function traceSink(user: AuthUser | null, askedAt: string) {
     return (finalization: AskFinalization): void => {
       try {
         insertRunTrace(deps.db, {
           finalization,
-          userId,
+          userId: user?.id ?? null,
           askedAt,
           recordedAt: new Date().toISOString(),
         });
+        if (user !== null && finalization.outcome === 'ok' && finalization.citationMap.length > 0) {
+          suggestQuietly(() => recordAskDiscovery(deps.db, user, finalization.runId));
+        }
       } catch (err) {
         console.error(
           `[${finalization.runId}] 运行 Trace 落库失败（不影响本次回答）：`,
@@ -1365,7 +1383,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
         requestId: c.get('requestId'),
         user: c.get('user'),
       },
-      { onFinalize: traceSink(c.get('user')?.id ?? null, askedAt) },
+      { onFinalize: traceSink(c.get('user'), askedAt) },
     );
     return c.json(result satisfies AskResponse);
   });
@@ -1427,7 +1445,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
           {
             onEvent: send,
             signal: ac.signal,
-            onFinalize: traceSink(c.get('user')?.id ?? null, askedAt),
+            onFinalize: traceSink(c.get('user'), askedAt),
           },
         );
         // 终态事件由**交付状态**决定，不是"跑完了就是 done"：
@@ -1611,7 +1629,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
           {
             onEvent: send,
             signal: ac.signal,
-            onFinalize: traceSink(user.id, askedAt),
+            onFinalize: traceSink(user, askedAt),
           },
         );
         const terminal =
@@ -1684,7 +1702,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.post('/api/v1/research-notes', async (c) => {
     const owner = noteOwner(c);
     const input = parseCreateNote(await readJsonBody(c));
-    return c.json(presentResearchNote(deps.db, owner, createResearchNote(deps.db, owner.id, input)), 201);
+    const note = createResearchNote(deps.db, owner.id, input);
+    suggestQuietly(() => recordDiscovery(deps.db, owner, { kind: 'note', id: note.id, revision: note.revision }));
+    return c.json(presentResearchNote(deps.db, owner, note), 201);
   });
 
   app.get('/api/v1/research-notes/:id/export/:format', (c) =>
@@ -1698,7 +1718,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.patch('/api/v1/research-notes/:id', async (c) => {
     const owner = noteOwner(c);
     const input = parseUpdateNote(await readJsonBody(c));
-    return c.json(presentResearchNote(deps.db, owner, updateResearchNote(deps.db, owner.id, c.req.param('id'), input)));
+    const note = updateResearchNote(deps.db, owner.id, c.req.param('id'), input);
+    suggestQuietly(() => recordDiscovery(deps.db, owner, { kind: 'note', id: note.id, revision: note.revision }));
+    return c.json(presentResearchNote(deps.db, owner, note));
   });
 
   app.get('/api/v1/research-notes/:id/runs/:runId/sources/:citationId', (c) => {
@@ -3425,6 +3447,28 @@ export function createApp(deps: AppDeps): Hono<Env> {
   //   顶部：documents 是"进了索引的东西"的名册，凡是进去的都会被检索到，而安全
   //   卡点 GC-12 要求草案**未确认前检索不到**。所以草案先待在索引之外的表里，
   //   确认时才物化成一份 documents（那是后面的单元）。
+  function discoveryUser(c: Context<Env>) {
+    const user = c.get('user');
+    if (user === null) throw new AppError('unauthenticated', '请先登录。');
+    c.header('Cache-Control', 'private, no-store');
+    return user;
+  }
+
+  app.get('/api/v1/knowledge/discovery', (c) => c.json(listDiscoveries(deps.db, discoveryUser(c))));
+
+  app.patch('/api/v1/knowledge/discovery', async (c) => {
+    const user = discoveryUser(c);
+    const { enabled } = await readJsonObject(c);
+    if (typeof enabled !== 'boolean') throw new AppError('invalid_argument', '请选择是否启用主动建议。');
+    setDiscoveryEnabled(deps.db, user.id, enabled);
+    return c.json(listDiscoveries(deps.db, user));
+  });
+
+  app.post('/api/v1/knowledge/discovery/:id/ignore', (c) => {
+    ignoreDiscovery(deps.db, discoveryUser(c).id, c.req.param('id'));
+    return c.json({ ignored: true });
+  });
+
   app.post('/api/v1/knowledge/drafts', async (c) => {
     const user = c.get('user');
     if (user === null) throw new AppError('unauthenticated', '请先登录。');
@@ -3495,10 +3539,11 @@ export function createApp(deps: AppDeps): Hono<Env> {
             return;
           }
           assertKnowledgeDraftReady(deps.db, entry);
-          const check = await detectConflict(deps.db, deps.config, entry);
+          const { check, lifecycle, vectorRevision } = await checkDraftPublication(deps.db, deps.config, user, entry);
           assertKnowledgeDraftReady(deps.db, entry);
           if (check.kind === 'conflict') {
-            const note = { ...entry.note, conflict: check.conflict };
+            const note = { ...entry.note, conflict: check.conflict,
+              ...(lifecycle === undefined ? {} : { lifecycle }) };
             if (entry.note?.draftSource === undefined) {
               markConflicted(deps.db, entry.id, note);
             } else {
@@ -3515,7 +3560,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
             results.push({
               entryId: entry.id,
               outcome: 'conflicted',
-              message: `与一条已有知识相似度 ${check.conflict.score.toFixed(3)}（阈值 ${check.conflict.threshold}），已挂起等待裁决，没有入库。`,
+              message: lifecycle === undefined
+                ? `与一条已有知识相似度 ${check.conflict.score.toFixed(3)}（阈值 ${check.conflict.threshold}），已挂起等待裁决，没有入库。`
+                : '已送知识审核核对新旧内容和来源。审核前保持现有索引。',
             });
             return;
           }
@@ -3525,7 +3572,7 @@ export function createApp(deps: AppDeps): Hono<Env> {
             actor: { id: user.id },
             note,
             ...(entry.note?.draftSource === undefined ? {} : {
-              revalidate: () => assertKnowledgeDraftReady(deps.db, entry),
+              revalidate: () => assertStillDirectPublication(deps.db, user, entry, vectorRevision),
             }),
           });
           results.push({
@@ -3552,10 +3599,47 @@ export function createApp(deps: AppDeps): Hono<Env> {
   app.get('/api/v1/knowledge/review', (c) => {
     c.header('Cache-Control', 'private, no-store');
     const limit = parseLimit(c.req.query('limit'), 100, 500);
-    return c.json({
-      items: listReviewQueue(deps.db, limit).map((entry) => presentKnowledgeEntry(entry, c.get('user'), deps.db)),
-      threshold: deps.config.knowledgeConflictThreshold,
-    } satisfies KnowledgeReviewQueueResponse);
+    const user = c.get('user');
+    const queued = listReviewQueue(deps.db, limit);
+    const ids = new Set(queued.flatMap((entry) => entry.neighbor === null ? [] : [entry.neighbor.entryId]));
+    const targets = [...ids].flatMap((id) => {
+      const target = findEntry(deps.db, id);
+      return target?.status === 'active' ? [target] : [];
+    });
+    const present = (entry: KnowledgeEntry) => presentKnowledgeEntry(entry, user, deps.db);
+    const sources = user === null ? {} : Object.fromEntries([...queued, ...targets].flatMap((entry) => {
+      const source = inspectReviewSource(deps.db, user, entry);
+      return source === undefined ? [] : [[entry.id, source.summary]];
+    }));
+    return c.json({ items: queued.map(present), neighbors: targets.map(present), sources,
+      threshold: deps.config.knowledgeConflictThreshold } satisfies KnowledgeReviewQueueResponse);
+  });
+
+  function requireReviewDocument(c: Context<Env>, id: string): ChunkContextResponse {
+    c.header('Cache-Control', 'private, no-store');
+    const user = c.get('user');
+    if (user === null) throw new AppError('unauthenticated', '请先登录。');
+    const currentViewer = findUserById(deps.db, user.id);
+    if (currentViewer?.status !== 'active' || !hasPermission(currentViewer.role, 'knowledge.review')) {
+      throw new AppError('permission_denied', '当前账号已不能审核知识。');
+    }
+    const entry = findEntry(deps.db, id);
+    const context = entry === null ? undefined : inspectReviewSource(deps.db, toAuthUser(currentViewer), entry)?.context;
+    if (context === undefined) throw new AppError('not_found', '当前无法核对此资料来源。');
+    return context;
+  }
+
+  app.get('/api/v1/knowledge/review/:id/source', (c) => c.json(requireReviewDocument(c, c.req.param('id'))));
+  app.get('/api/v1/knowledge/review/:id/source/file', (c) => {
+    const id = c.req.param('id');
+    const source = requireReviewDocument(c, id);
+    return serveDocumentFile(c, source.document.id, () => {
+      const current = requireReviewDocument(c, id);
+      if (current.document.id !== source.document.id || current.chunk.id !== source.chunk.id ||
+          current.sourceVersion !== source.sourceVersion) {
+        throw new AppError('not_found', '当前无法核对此资料来源。');
+      }
+    });
   });
 
   // 驳回单条草案。**终态、保留行**（见 shared/knowledge.ts 的状态机说明）：
@@ -3580,7 +3664,9 @@ export function createApp(deps: AppDeps): Hono<Env> {
       }
 
       const reason = readOptionalReason(body['reason'], '驳回原因');
-      markRejected(deps.db, id, reason === null ? entry.note : { ...entry.note, reason });
+      if (!markRejected(deps.db, id, reason === null ? entry.note : { ...entry.note, reason }, 'proposed')) {
+        throw new AppError('invalid_argument', '草稿状态已经变化，请刷新。', { httpStatus: 409 });
+      }
       const after = findEntry(deps.db, id);
       if (after === null) throw new AppError('internal', '驳回后回读失败。');
       return c.json({ entry: presentKnowledgeEntry(after, user, deps.db) } satisfies RejectKnowledgeResponse);
@@ -3692,17 +3778,33 @@ export function createApp(deps: AppDeps): Hono<Env> {
 
       const now = new Date().toISOString();
       const conflict = entry.note?.conflict;
+      const lifecycle = entry.note?.lifecycle;
 
       // ── 驳回本条：最省事的一条。新条落终态，旧条一个字节都不动。 ──
       if (resolution === 'reject') {
-        markRejected(deps.db, id, {
+        if (!markRejected(deps.db, id, {
           ...(entry.note ?? {}),
           resolution: { kind: 'reject', by: user.id, at: now },
-        });
+          ...(lifecycle === undefined ? {} : { lifecycle: { ...lifecycle, mode: 'reject' } }),
+        }, 'conflicted')) {
+          throw new AppError('invalid_argument', '草稿刚被其他人处理，请刷新审核队列。', { httpStatus: 409 });
+        }
         const after = findEntry(deps.db, id);
         if (after === null) throw new AppError('internal', '裁决后回读失败。');
         return c.json({ entry: presentKnowledgeEntry(after, user, deps.db), supersededEntryId: null } satisfies ResolveKnowledgeResponse);
       }
+
+      if (lifecycle !== undefined) {
+        const supersededEntryId = await resolveLifecycle(deps.db, deps.config, user, entry, lifecycle,
+          resolution, body['mergedContent'], now);
+        const accepted = findEntry(deps.db, id);
+        if (accepted === null) throw new AppError('internal', '裁决后回读失败。');
+        return c.json({ entry: presentKnowledgeEntry(accepted, user, deps.db), supersededEntryId } satisfies ResolveKnowledgeResponse);
+      }
+      if (entry.note?.lifecycleVersion === 1) {
+        throw new AppError('invalid_argument', '审核项目缺少对照版本。请驳回后由作者重新提交。', { httpStatus: 409 });
+      }
+      if (resolution === 'merge') throw new AppError('invalid_argument', '只有有版本对照的审核项目支持合并。');
 
       // 「取代已有」必须有明确的取代对象。拿不到邻居（note 坏了、或邻居已被删）
       // 就不能假装能做到 —— 静默降级成"允许并存"会让用户以为旧的已经被撤下了。
