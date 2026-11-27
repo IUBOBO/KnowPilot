@@ -765,7 +765,7 @@
       "prs": [
         35
       ],
-      "tested_local_sha": "62616e3df90f7c713f7ba901b6804cd4ee5315d3",
+      "tested_local_sha": "4bf76b7636418dea1ef4785ae839398dd6383ccc",
       "head_sha": null,
       "merge_sha": null,
       "acceptance": {
@@ -1467,15 +1467,15 @@
               "pr": 35,
               "pre": {
                 "status": "passed",
-                "tested_local_sha": "62616e3df90f7c713f7ba901b6804cd4ee5315d3",
-                "tested_tree_sha": "8a49b02cb3009b9ca9c7135e6ecb1a9e73c0acb4",
+                "tested_local_sha": "4bf76b7636418dea1ef4785ae839398dd6383ccc",
+                "tested_tree_sha": "9973e354810290733ead1c409763906bbee29afd",
                 "commands_passed": 29,
                 "commands_total": 30,
                 "evidence_hashes": {
-                  "review-results.json": "b91c2807f46872b71936bf6a3113373cf780055d25adf8e0ac51e494ebd96707",
-                  "targeted.json": "7f63ae9958173d543ac7ba8007bec49697813e5dfe12298b281710a0372ebf29",
-                  "blockers.json": "34decee2e296a45ea1565005c3e51c2d9a434dca4e4b198b84c65e6da44f1198",
-                  "browser.log": "f902e8212cde6eb589d57da9c9cc497b9b88f7fa2c34c5aadb2abc113903c56e"
+                  "review-results.json": "86d6d9f93d5d3c5d4f1d9abf1394e7ee614c51802db21671ac37745230a85409",
+                  "targeted.json": "cd250c250b6679a90a18310c03aed6ed7761f1a5508574d20877da81a904095d",
+                  "blockers.json": "2d8b5a9fd53794e9c18a45bef5e6a2b74dad93d0c3a238f5f8947729f5972504",
+                  "browser.log": "e071065fabc424dcf11c38aaf6b1d7f849b6474c4e4dee92b6c352c80795c81c"
                 },
                 "sqlite_v37_restore": "passed",
                 "sqlite_v38_rollback_and_replay": "passed",
@@ -1488,7 +1488,7 @@
                   "baseline_sha": "819315c7921796508d35e495cbc4af2b94786fe3"
                 },
                 "independent_review": "passed",
-                "previous_reviewed_pr_head": "6f69f19c3e77ec4368e8c9fb9ee38961d28c4960"
+                "previous_reviewed_pr_head": "16f1355a96957042100f03ef8d4d59410c1eefbe"
               },
               "previous_pre": {
                 "status": "passed",
@@ -1515,6 +1515,31 @@
               },
               "post": {
                 "status": "not_run"
+              },
+              "pre_before_final_review": {
+                "status": "passed",
+                "tested_local_sha": "62616e3df90f7c713f7ba901b6804cd4ee5315d3",
+                "tested_tree_sha": "8a49b02cb3009b9ca9c7135e6ecb1a9e73c0acb4",
+                "commands_passed": 29,
+                "commands_total": 30,
+                "evidence_hashes": {
+                  "review-results.json": "b91c2807f46872b71936bf6a3113373cf780055d25adf8e0ac51e494ebd96707",
+                  "targeted.json": "7f63ae9958173d543ac7ba8007bec49697813e5dfe12298b281710a0372ebf29",
+                  "blockers.json": "34decee2e296a45ea1565005c3e51c2d9a434dca4e4b198b84c65e6da44f1198",
+                  "browser.log": "f902e8212cde6eb589d57da9c9cc497b9b88f7fa2c34c5aadb2abc113903c56e"
+                },
+                "sqlite_v37_restore": "passed",
+                "sqlite_v38_rollback_and_replay": "passed",
+                "model_checks": "not_run",
+                "known_baseline_failure": {
+                  "command": "verify-next-actions",
+                  "exit": 1,
+                  "passed_assertions": 28,
+                  "total_assertions": 30,
+                  "baseline_sha": "819315c7921796508d35e495cbc4af2b94786fe3"
+                },
+                "independent_review": "passed",
+                "previous_reviewed_pr_head": "6f69f19c3e77ec4368e8c9fb9ee38961d28c4960"
               }
             }
           }

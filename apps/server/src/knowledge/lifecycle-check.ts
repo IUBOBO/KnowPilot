@@ -305,23 +305,35 @@ console.log('PASS fully labeled lexical-new draft still checks vectors; known di
 const clearWhileStaged = await checkDraftPublication(db,config,author,get(scopedVectorOnly.entry),async () => ({kind:'clear'}));
 assert(clearWhileStaged.vectorRevision);
 assert.doesNotThrow(() => assertStillDirectPublication(db,author,get(scopedVectorOnly.entry),clearWhileStaged.vectorRevision));
+const unavailableVector = async () => ({kind:'skipped' as const, reason:'隔离模型暂不可用'});
+const skippedWhileStaged = await checkDraftPublication(db,config,author,get(scopedVectorOnly.entry),unavailableVector);
+assert.equal(skippedWhileStaged.check.kind,'skipped');
+assert(skippedWhileStaged.vectorRevision);
+assert.doesNotThrow(() => assertStillDirectPublication(db,author,get(scopedVectorOnly.entry),skippedWhileStaged.vectorRevision));
 const anotherPublication = await create('合成报告用无关词汇记录本期独立试验流程 g4concurrentpublication。');
 assert.equal((await confirm(anotherPublication))?.outcome,'active');
 assert.throws(() => assertStillDirectPublication(db,author,get(scopedVectorOnly.entry),clearWhileStaged.vectorRevision),
+  /正式知识在处理期间发生变化/u);
+assert.throws(() => assertStillDirectPublication(db,author,get(scopedVectorOnly.entry),skippedWhileStaged.vectorRevision),
   /正式知识在处理期间发生变化/u);
 assert.equal(get(scopedVectorOnly.entry).status,'proposed');
 assert.equal(formal('g4scopedvectorprobe'),0);
 const beforeBackfill = await checkDraftPublication(db,config,author,get(scopedVectorOnly.entry),async () => ({kind:'clear'}));
 assert(beforeBackfill.vectorRevision);
+const skippedBeforeBackfill = await checkDraftPublication(db,config,author,get(scopedVectorOnly.entry),unavailableVector);
+assert(skippedBeforeBackfill.vectorRevision);
 const newChunk = get(anotherPublication.entry).firstChunkId!;
 db.prepare('INSERT INTO chunk_embeddings(chunk_id,model,dim,vec,created_at) VALUES(?,?,?,?,?)')
   .run(newChunk,'fixture-other-model',1,Buffer.from(new Float32Array([1]).buffer),now.toISOString());
 assert.doesNotThrow(() => assertStillDirectPublication(db,author,get(scopedVectorOnly.entry),beforeBackfill.vectorRevision));
+assert.doesNotThrow(() => assertStillDirectPublication(db,author,get(scopedVectorOnly.entry),skippedBeforeBackfill.vectorRevision));
 db.prepare('UPDATE chunk_embeddings SET model=? WHERE chunk_id=?').run(embeddingModelKey(config),newChunk);
 assert.throws(() => assertStillDirectPublication(db,author,get(scopedVectorOnly.entry),beforeBackfill.vectorRevision),
   /正式知识在处理期间发生变化/u);
+assert.throws(() => assertStillDirectPublication(db,author,get(scopedVectorOnly.entry),skippedBeforeBackfill.vectorRevision),
+  /正式知识在处理期间发生变化/u);
 assert.equal(formal('g4scopedvectorprobe'),0);
-console.log('PASS staged publication rechecks the vector candidate revision after concurrent admission or embedding backfill');
+console.log('PASS staged publication rechecks candidate revisions after admission or model backfill, including skipped vector checks');
 
 const vectorOnly = await create('采用另一整套合成说明描述完全不同的术语向量用例 vectoronlyfixture。');
 const vectorCheck: ConflictCheck = { kind:'conflict', conflict:{

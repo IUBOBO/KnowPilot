@@ -59,7 +59,8 @@ export async function checkDraftPublication(
   if (check.kind === 'conflict') {
     throw new AppError('invalid_argument', '与正式知识相似但缺少可核对的依据、条件或版本。请补充后再确认。', { httpStatus: 409 });
   }
-  return check.kind === 'clear' ? { check, vectorRevision: { model, revision: eligible.revision } } : { check };
+  // Keep the observations made before fallback even when embedding is unavailable.
+  return { check, vectorRevision: { model, revision: eligible.revision } };
 }
 
 export function assertStillDirectPublication(db: Db, user: AuthUser, entry: KnowledgeEntry, vectorRevision?: VectorRevision): void {
