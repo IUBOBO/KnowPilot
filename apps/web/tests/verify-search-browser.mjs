@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -586,7 +586,8 @@ try {
   assert.equal(await sourceControl.evaluate((button) => document.activeElement === button), true);
   await noteEditor.getByLabel('标题').fill('合成笔记编辑后的标题');
   await noteEditor.getByLabel('标签').fill('校准，回归');
-  const editedBody = '研究者编辑内容\n\n' + await noteBody.inputValue();
+  const stageMarker = 'knowpilotg3publicationprobe';
+  const editedBody = '研究者编辑内容 ' + stageMarker + '\n\n' + await noteBody.inputValue();
   await noteBody.fill(editedBody);
   const saveNote = noteEditor.getByRole('button', { name: '保存笔记' });
   await saveNote.focus();
@@ -594,6 +595,23 @@ try {
   await noteEditor.getByRole('heading', { name: '合成笔记编辑后的标题' }).waitFor();
   await noteEditor.getByText('笔记已保存。', { exact: true }).waitFor();
   assert(await saveNote.evaluate((button) => button === document.activeElement));
+
+  async function downloadedExport(button, extension) {
+    const [download] = await Promise.all([
+      notePage.waitForEvent('download'), noteEditor.getByRole('button', { name: button, exact: true }).click(),
+    ]);
+    assert(download.suggestedFilename().endsWith(extension));
+    return { filename: download.suggestedFilename(), bytes: await readFile(await download.path()) };
+  }
+  const exportedMarkdown = await downloadedExport('下载 Markdown', '.md');
+  assert.equal(exportedMarkdown.filename, '合成笔记编辑后的标题.md');
+  assert(exportedMarkdown.bytes.toString('utf8').includes(editedBody));
+  const exportedPdf = await downloadedExport('下载 PDF', '.pdf');
+  assert.equal(exportedPdf.filename, '合成笔记编辑后的标题.pdf');
+  assert.equal(exportedPdf.bytes.subarray(0, 5).toString('ascii'), '%PDF-');
+  await noteEditor.getByText('已下载当前保存的笔记。', { exact: true }).waitFor();
+  await noteEditor.screenshot({ path: join(output, 'research-notes-export.png') });
+  console.log('PASS note export downloads saved UTF-8 Markdown and local PDF from the authenticated editor');
   await notePage.reload();
   await noteBody.waitFor();
   assert.equal(await noteBody.inputValue(), editedBody);
@@ -609,6 +627,61 @@ try {
   assert.equal(await notePage.locator('.ask-form input').inputValue(), '');
   assert(!calls.slice(beforeContinue).some(({ pathname }) => pathname === '/api/v1/ask/stream'));
   assert.equal(modelCalls.length, savedWithoutModel);
+
+  // Use the same note that came from the real ask response and both downloads.
+  const stageNoteId = new URL(fullNoteUrl).searchParams.get('note');
+  assert(stageNoteId);
+  const stagePage = await makePage(browser, { width: 1440, height: 980 }, session().token);
+  const otherUser = await insertUser(db, 'g3-stage-observer', {
+    displayName: 'G3 合成观察账号', role: 'member', password: 'fixture-only-not-a-real-password',
+  }, now);
+  const observerSession = createSession(db, { userId: otherUser, now, idleDays: 1, maxDays: 1, ip: null, userAgent: null });
+  const observerPage = await makePage(browser, { width: 1440, height: 980 }, observerSession.token);
+  stagePage.on('pageerror', (error) => pageErrors.push(error));
+  observerPage.on('pageerror', (error) => pageErrors.push(error));
+  const privateNotePath = '/api/v1/research-notes/' + stageNoteId;
+  assert.equal((await observerPage.request.get(origin + privateNotePath)).status(), 404);
+  assert.equal((await observerPage.request.get(origin + privateNotePath + '/export/md')).status(), 404);
+  assert.equal((await observerPage.request.get(origin + privateNotePath + '/export/pdf')).status(), 404);
+  await stagePage.goto(fullNoteUrl);
+  const stageDraft = await submitDraftFromCurrentSource(stagePage, 'note');
+  assert.equal(stageDraft.note.draftSource.id, stageNoteId);
+  assert(stageDraft.note.draftSource.excerpt.includes(stageMarker));
+  const stageSearch = () => runSearch(observerPage, stageMarker, { kind: 'document', material: 'knowledge' });
+  assert.equal((await stageSearch()).hits.length, 0);
+  await stagePage.goto(origin + '/knowledge');
+  const draftRow = stagePage.locator('.kb-entry').filter({ hasText: stageMarker });
+  await draftRow.getByRole('button', { name: '编辑草稿' }).click();
+  await draftRow.getByRole('textbox', { name: '草稿正文' }).fill('已人工核对的合成知识 ' + stageMarker);
+  await draftRow.getByRole('button', { name: '保存修改' }).click();
+  const revised = '已人工核对的合成知识 ' + stageMarker;
+  const revisedBody = draftRow.locator('.kb-entry-body').filter({ hasText: revised });
+  await revisedBody.waitFor();
+  assert.equal(await revisedBody.textContent(), revised);
+  const activeGroup = stagePage.locator('.kb-group').filter({ has: draftRow });
+  const confirmPublication = activeGroup.getByRole('button', { name: '确认整组（1 条）' });
+  assert.equal(await confirmPublication.isDisabled(), true);
+  await stagePage.getByRole('checkbox', { name: '我已阅读并理解' }).check();
+  const [confirmation] = await Promise.all([
+    stagePage.waitForResponse((response) => requestPath(response) === '/api/v1/knowledge/groups/' + stageDraft.groupId + '/confirm'),
+    confirmPublication.click(),
+  ]);
+  assert.equal(confirmation.status(), 200);
+  const confirmationBody = await confirmation.json();
+  const confirmed = confirmationBody.results.find((result) => result.entryId === stageDraft.id);
+  assert.equal(confirmed?.outcome, 'active', JSON.stringify(confirmationBody));
+  await draftRow.getByText('已生效', { exact: true }).waitFor();
+  const published = db.prepare('SELECT status, document_id FROM knowledge_entries WHERE id=?').get(stageDraft.id);
+  assert.equal(published?.status, 'active');
+  assert(published.document_id);
+  const found = (await stageSearch()).hits.find((hit) => hit.documentId === published.document_id);
+  assert(found, 'Another member should retrieve the exact approved document');
+  await bodyPanel(observerPage).getByText(new RegExp(stageMarker)).first().waitFor();
+  await observerPage.screenshot({ path: join(output, 'g3-note-to-public-search.png') });
+  assert.equal((await observerPage.request.get(origin + privateNotePath)).status(), 404);
+  await stagePage.close();
+  await observerPage.close();
+  console.log('PASS G3 same note: answer, edit, Markdown and PDF, draft, private search exclusion, human confirmation and public retrieval');
 
   const completion = Promise.withResolvers();
   holdAnswer = completion.promise;
@@ -751,6 +824,11 @@ try {
   const deniedFile = await notePage.request.get(origin + noteFileUrl);
   assert.equal(deniedFile.status(), 404);
   assert(!(await deniedFile.text()).includes(noteSourceText));
+  const restrictedExport = await downloadedExport('下载 Markdown', '.md');
+  const restrictedContent = restrictedExport.bytes.toString('utf8');
+  assert(!restrictedContent.includes(noteDocumentTitle) && !restrictedContent.includes(editedBody));
+  await noteEditor.getByText(/文件仅包含来源状态/u).waitFor();
+  console.log('PASS loaded editor rechecks a withdrawn source when exporting');
   await sourceControl.first().click();
   await noteReader.getByText(/此证据不可读取/).waitFor();
   assert.equal(await noteReader.getByText(noteSourceText, { exact: true }).count(), 0);
@@ -759,6 +837,9 @@ try {
   assert.equal(await sourceControl.count(), 0);
   await noteEditor.getByRole('link', { name: '打开检索选取研究资料' }).waitFor();
   await notePage.setViewportSize({ width: 390, height: 844 });
+  // Chromium can report the new viewport before applying the compact sidebar styles.
+  await notePage.waitForFunction(() =>
+    (document.querySelector('.sidebar')?.getBoundingClientRect().width ?? Infinity) <= 64);
   await assertNoHorizontalOverflow(notePage);
   await notePage.screenshot({ path: join(output, 'research-notes-narrow-unavailable.png') });
   const beforeSearch = calls.length;

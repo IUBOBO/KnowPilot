@@ -3,7 +3,8 @@
 .notes-list ul { list-style: none; padding: 0; }
 .notes-list li { border-block-start: 1px solid var(--border); padding-block: 0.65rem; overflow-wrap: anywhere; }
 .notes-list a[aria-current="page"] { font-weight: 700; }
-.notes-search, .notes-editor form { display: grid; gap: 0.75rem; margin-block: 0.75rem; }
+.notes-search, .notes-editor form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.75rem; margin-block: 0.75rem; }
+.notes-layout .field > input { min-width: 0; }
 .notes-editor textarea { resize: vertical; }
 .notes-editor li { overflow-wrap: anywhere; }
 .notes-layout .note-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; }

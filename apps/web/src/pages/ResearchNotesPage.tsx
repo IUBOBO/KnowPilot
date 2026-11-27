@@ -13,6 +13,7 @@ import { PageTitle } from '../components/PageTitle.tsx';
 import { fmtDateTime } from '../format.ts';
 import { DraftSourceAction } from './knowledge/DraftSourceAction.tsx';
 import type { NoteDraft } from './ask/AskNoteActions.tsx';
+import { NoteExportActions } from './notes/NoteExportActions.tsx';
 import { noteCitationLabel, qualifyNoteCitations } from './notes/note-citations.ts';
 import './notes/notes.css';
 
@@ -277,6 +278,7 @@ function NoteForm({ note, url, draft, onSaved, onReload, onDeleted }: {
     </form>
     {notice !== '' && <p role="status">{notice}</p>}
     {error !== null && <ErrorNotice error={error} onRetry={onReload} />}
+    <NoteExportActions key={note.id} noteId={note.id} disabled={busy} />
     <section aria-label="继续研究">
       <h3>继续研究</h3>
       {handoff === undefined
