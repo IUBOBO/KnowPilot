@@ -341,7 +341,7 @@
     },
     {
       "id": "G5",
-      "status": "planned",
+      "status": "in_progress",
       "report": "docs/plans/v2/gates/G5.md",
       "merge_sha": null,
       "acceptance": {
@@ -349,7 +349,8 @@
         "reviewer": null,
         "evidence": []
       },
-      "blockers": []
+      "blockers": [],
+      "offline_evidence": "docs/plans/v2/gates/G5.md"
     }
   ],
   "tasks": [
@@ -887,10 +888,11 @@
         "status": "pending",
         "evidence": [
           "docs/plans/v2/gates/G0.md",
-          "docs/plans/v2/V2-13.md"
+          "docs/plans/v2/V2-13.md",
+          "docs/plans/v2/gates/G5.md"
         ],
         "reviewer": null,
-        "reason": "13-A offline accepted. 13-B and 13-C remain open."
+        "reason": "13-A and 13-B offline evidence recorded. G5-A ran and awaits evidence review. Final 13-C and G5 acceptance remain pending."
       },
       "release_node": "G5.pass",
       "phases": {
@@ -1632,7 +1634,7 @@
           }
         },
         "13-C": {
-          "state": "ready",
+          "state": "in_progress",
           "acceptance": "not_run",
           "released_by": [
             "G4.pass",
@@ -1649,9 +1651,72 @@
             "11.released",
             "12.released"
           ],
-          "scope": "G5-A offline only",
+          "scope": "G5-A offline evidence awaiting review; G5-B requires separate authorization",
           "g5_b_model_checks": "not_run",
-          "stage_record_pr": 36
+          "stage_record_pr": 36,
+          "branch": "codex/g5-offline-eval",
+          "worktree_alias": "KnowPilot-V2-G5",
+          "review_status": "pending",
+          "g5_a": {
+            "status": "executed_review_pending",
+            "tested_main_sha": "663792ba1c59855b64829903a3df29c0ada3555d",
+            "tested_tree_sha": "695cc39162b667f02ef279ce7e62bc0b8acd0366",
+            "tracked_worktree_clean_before_both_runs": true,
+            "workspace_clean_before_initial_run": true,
+            "commands": {
+              "total": 34,
+              "passed": 33,
+              "failed": 1,
+              "sole_failure": "verify-next-actions",
+              "baseline_check_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
+              "assertion_comparison_count": 30,
+              "unchanged_baseline_failures": 2,
+              "index": "docs/plans/v2/evidence/g5-a/commands.md"
+            },
+            "cases": {
+              "total": 47,
+              "pass": 3,
+              "incomplete": 39,
+              "not_implemented": 5,
+              "fail": 0,
+              "assertions_pass": 6,
+              "assertions_not_run": 124,
+              "incomplete_g5_b_proposed": 2,
+              "incomplete_other_semantic": 7,
+              "incomplete_offline_test_coverage": 30,
+              "index": "docs/plans/v2/evidence/g5-a/cases.md"
+            },
+            "retrieval": {
+              "cohort_count": 24,
+              "fixture": "5d4ca679bfc6",
+              "baseline_sha": "1b0dbd8a99ec4db04a9b1e45bf45737b2bf9fd51",
+              "gold_hits": 23,
+              "gold_total": 33,
+              "raw_and_scripted_pool_macro_recall_at_8": 0.8095238095238095,
+              "raw_and_scripted_pool_micro_recall_at_8": 0.696969696969697,
+              "raw_and_scripted_pool_mrr_at_8": 0.8333333333333334,
+              "scoped_browser_case_separate": true,
+              "index": "docs/plans/v2/evidence/g5-a/retrieval.md"
+            },
+            "model_external_cost_usd": 0,
+            "local_evidence_archive_sha256": "eb0cc2808bdba055b3482bcedc7e1f705daed0d16bf686af1871d2879589452a",
+            "timed_manifest_sha256": "a5d1e33b4de5fdeb4fa0a83f4f1de9976b58c2774f922434c41cd2bd47ae6f60",
+            "original_manifest_sha256": "1fc80e8dbfc274c32eec878a7420c87184b832928f8fcf4843e508de7f7d0d51",
+            "report": "docs/plans/v2/gates/G5.md"
+          },
+          "g5_b": {
+            "status": "not_run",
+            "approval": "pending",
+            "checks": [
+              "GC-08",
+              "GC-09",
+              "BGE-M3"
+            ],
+            "cloud_budget_max_requests": 24,
+            "cloud_budget_max_usd": 0.1,
+            "local_max_minutes": 30,
+            "local_disk_growth_max_gib": 2
+          }
         }
       }
     }
