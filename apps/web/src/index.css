@@ -38,177 +38,114 @@
 :root {
   color-scheme: light;
 
-  /* ── 底色与面 ────────────────────────────────────────────
-     从"页面底"到"卡片面"共几级，靠明度差分层。
-     底色不是纯白：纯白底 + 纯黑字对比过硬，中文笔画密，读久了累。 */
-  --bg: #f7f8f7;
-  --bg-sunk: #eff2f0;
+  /* 页面、内容、辅助和表单表面。导航保留品牌底色。 */
+  --bg: #f4f6f6;
+  --bg-sunk: #e9eeee;
   --surface: #ffffff;
-  --surface-2: #f4f7f6;
-  --sidebar: #f2f5f3;
-  /* 【2026-10-16 界面整理-new 起：--field 由"比卡片更暗"翻成"比卡片更亮"】
-     原来是 #eef1ed（灰绿暗底）。一排 6 个输入框时，卡片上像打了 6 块灰补丁。
-     改成近白清透底 + 细描边 + 微内阴影，"这一格能填"靠描边而不是靠压暗底色。
-     ⚠ 代价已实测：占位文字（--ink-4）原先落在最暗的那个底上，现在换成了最亮的那个，
-     这一翻转必须重跑 tmp/s3-contrast.mjs —— 见下面 --ink-4 的注。 */
-  --field: #fcfdfc;
+  --surface-2: #f0f3f5;
+  --sidebar: #eaf4f2;
+  --field: #ffffff;
+  --line: #d9e2e7;
+  --line-strong: #bfcdd4;
+  --line-soft: #e6ecef;
 
-  /* ── 文字 4 级 ───────────────────────────────────────────
-     正文用 --ink，说明文字用 --ink-3，只有表头和极小字号才用 --ink-4。
-     级数有限是有意的：随手加"再浅一点"的第五级，页面就会开始显得脏。
-
-     【为什么 ink-3 / ink-4 在 S3 被压暗了】改之前 ink-4 是 #7a868b，在卡片面上
-     只有 3.74:1、在页面底上 3.56:1 —— 而它专门用在 11–12px 的表头、时间戳、
-     占位文字上，正是最需要够清楚的地方（规格 1.8 把它列为风险最高的一条）。
-     压暗到 5.40:1 是**按暗色那套的比值对齐**，不是随手压到刚好 4.5：
-       亮色 ink 梯级（在卡片面上）  14.63 / 11.35 / 6.00 / 3.74
-       暗色 ink 梯级（在卡片面上）  13.53 / 11.36 / 7.27 / 5.36
-     两套的第三、四级差着 1.2–1.4 倍，"最淡的一级"在两种主题下淡得不是一回事。
-     现在对齐成 14.63 / 11.35 / 7.31 / 5.40 —— 亮暗落差从 0.70x 收到 1.01x。
-
-     【为什么 ink-3 一起动了】四级之间要有可感知的距离。ink-4 只要压到 4.5:1，
-     就会贴上原来只有 6.00:1 的 ink-3（差不到 0.04 感知明度），四级梯级会塌成
-     三级 —— 而"两级看不出差别"比"最淡那级略淡"更糟：前者是层级失效。
-     两级都按 OKLCH 只动 L（C 与 h 保持不变），所以还是同一支灰青，没有"调完发灰"。
-
-     【口径】判据取 ink-4 **实际会落到的最暗那个底**（--field，占位文字）。
-     只在白底上量是不够的：同一级字在 --field 上比在卡片面上低 0.66，正是
-     这一档最容易漏掉的地方。改后它在所有底上都 ≥4.74:1。 */
-  --ink: #162026;
-  --ink-2: #2c3940;
-  --ink-3: #526068;
-  /* 【为什么不是 界面整理-new 给的 #68767e】实测它在本页所有底上最坏只有 4.54:1
-     （落在 --surface-2 上）—— 低于"整理-new"自己声称的 4.8，也把上一轮
-     好不容易对齐到 4.74 的那条线退回了一档。压到 #616f77 后最坏 4.81:1，
-     既拿到"更干净的辅助字"，也没拿可读性去换。判据脚本：tmp/s3-contrast.mjs。 */
-  --ink-4: #616f77;
-
-  /* ── 描边 3 级 ────────────────────────────────────────── */
-  --line: #e2e8e5;
-  --line-strong: #cbd4d0;
-  --line-soft: #edf1ef;
-
-  /* ── 主色：深青 ─────────────────────────────────────────
-     比蓝少一点"后台管理系统"的观感，且与琥珀、砖红是补色关系，
-     三个一起出现时互相衬托而不是打架。 */
-  --accent: #0f6d78;
-  --accent-ink: #0c5963;
-  --accent-hover: #0a525b;
-  --accent-soft: #0f6d7814;
-  --accent-softer: #0f6d780a;
-  --accent-contrast: #ffffff;
-
-  /* ── 语义色 ─────────────────────────────────────────────
-     每个语义只给一组色：实色用于描边和左色条，soft 用于底，ink 用于浅底上的字。
-     不给每个语义配第二种颜色 —— 那是配色开始失控的起点。 */
-  --ok: #2f7d5c;
-  --ok-ink: #2a6e51;
-  --ok-soft: #2f7d5c1a;
-  --warn: #b8873a;
-  --warn-ink: #7c5a24;
-  --warn-soft: #b8873a1a;
-  --err: #b3402a;
-  --err-ink: #9a3421;
-  --err-soft: #b3402a1a;
-
-  /* 检索命中高亮。用琥珀系而不是荧光黄：
-     一屏可能有几十处命中，饱和度一高整页都在尖叫，反而看不出重点。 */
+  /* 标题、正文、说明、小标签。重点、引用和真实命中各有独立用途。 */
+  --ink: #17212b;
+  --ink-2: #374151;
+  --ink-3: #536479;
+  --ink-4: #56667a;
+  --emphasis-ink: #173e73;
+  --emphasis-soft: #eaf1fa;
+  --citation-ink: #244e80;
+  --citation-line: #b0c4de;
   --mark-bg: #f6e3b4;
   --mark-ink: #6b4a10;
+  --reading-size: 0.96875rem;
+  --reading-leading: 1.8;
+  --reading-measure: 68ch;
 
+  --accent: #087c82;
+  --accent-ink: #055e63;
+  --accent-hover: #06666b;
+  --accent-soft: #087c821a;
+  --accent-softer: #087c820d;
+  --accent-contrast: #ffffff;
   --selection: #176b7529;
 
-  /* 阴影一律很轻。卡片靠描边分层，阴影只用来在 hover 时"抬起来"一点点。 */
-  --shadow-card: 0 1px 3px rgba(16, 28, 36, 0.04), 0 1px 2px rgba(16, 28, 36, 0.02);
-  --shadow-pop: 0 16px 40px rgba(16, 28, 36, 0.14);
+  --ok: #247653;
+  --ok-ink: #226b4c;
+  --ok-soft: #2476531a;
+  --warn: #b8862e;
+  --warn-ink: #785018;
+  --warn-soft: #d6a64b29;
+  --err: #a83a3d;
+  --err-ink: #8e2931;
+  --err-soft: #a83a3d1a;
+  --sub-info-ink: #245c87;
+  --sub-info-soft: #e5f1fa;
 
-  --radius-sm: 6px;
-  --radius: 9px;
-
-  /* ── 动效 ────────────────────────────────────────────────
-     时长与缓动集中在这里，组件里不再出现字面量（理由见文件头）。
-     档位划分：120ms = 手指/鼠标没离开就能看到结果；190ms = 有东西在展开或变形；
-     300ms = 一大片区域在移动。缓动全部显式写成曲线，不用关键字。 */
+  --shadow-card: 0 1px 3px rgba(16, 48, 49, 0.04);
+  --shadow-pop: 0 16px 48px rgba(13, 41, 43, 0.16);
+  --shadow-raise: 0 6px 20px rgba(16, 28, 36, 0.08);
+  --radius-sm: 8px;
+  --radius: 14px;
+  --raise: -1px;
   --t-fast: 120ms;
   --t-base: 190ms;
   --t-slow: 300ms;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-
-  /* 卡片 hover 抬起。位移量也做成 token —— 它和时长一样，是"整站一个调子"
-     的一部分，散成字面量就会出现"这张抬 2px、那张抬 4px"。
-     为什么只有 1px：卡片在列表里是紧挨着的，抬多了相邻卡片之间会互相
-     进入对方的视觉空间，快速划过时看着像在闪。1px 加上阴影变化足够被察觉。 */
-  --raise: -1px;
-
-  /* hover 时的阴影。取 --shadow-pop 的量级但收紧一点：shadow-pop 是为
-     "浮起来的弹层"准备的（12px 偏移 / 32px 模糊），配 1px 的抬起会显得
-     影子比卡片走得还远。 */
-  --shadow-raise: 0 6px 20px rgba(16, 28, 36, 0.08);
-
-
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
-    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-sans: Inter, "Noto Sans SC", "Microsoft YaHei", "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas,
     "Liberation Mono", monospace;
 }
 
-/* 暗色不是把亮色取反：底色是深青黑而非纯黑（纯黑配亮字边缘会有光晕感），
-   主色要**提亮**（深青在深底上会糊进背景），砖红 / 琥珀同样提亮。 */
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #0f1417;
-  --bg-sunk: #151c20;
-  --surface: #182025;
-  --surface-2: #1e282e;
-  --sidebar: #12181c;
-  --field: #131a1e;
+  --bg: #12171d;
+  --bg-sunk: #18212a;
+  --surface: #1b232c;
+  --surface-2: #232f3b;
+  --sidebar: #142528;
+  --field: #232f3b;
+  --line: #354654;
+  --line-strong: #4a6072;
+  --line-soft: #2e3c4a;
 
-  --ink: #ebf0ef;
-  --ink-2: #c8d3d5;
-  --ink-3: #8fa0a6;
-  /* 【为什么没照 界面整理-new 给暗色的 #6e8087】它在新的暗色卡片面（#182025）上
-     只有 4.0:1 —— 低于本文件一贯守的 4.5 硬线，而 ink-4 专门用在 11–12px 的
-     表头、时间戳与占位文字上，正是最不能糊的那一档。这里保留上一轮实测过的
-     #89979d（在 #182025 上 5.5:1），只把 ink-4 的**用途**跟着新底走。 */
-  --ink-4: #89979d;
+  --ink: #ecf2f8;
+  --ink-2: #cdd6e1;
+  --ink-3: #aab9ca;
+  --ink-4: #9babbf;
+  --emphasis-ink: #b7d4fa;
+  --emphasis-soft: #25364d;
+  --citation-ink: #c0daff;
+  --citation-line: #627fa5;
+  --mark-bg: #e9cc87;
+  --mark-ink: #382707;
 
-  --line: #ffffff12;
-  --line-strong: #ffffff22;
-  --line-soft: #ffffff0a;
-
-  --accent: #22c5d2;
-  --accent-ink: #52d6e0;
-  --accent-hover: #3bceca;
-  --accent-soft: #22c5d21f;
-  --accent-softer: #22c5d20f;
-  --accent-contrast: #042427;
-
-  --ok: #5fc79a;
-  --ok-ink: #7fd1ad;
-  --ok-soft: #5fc79a24;
-  --warn: #d3b26a;
-  --warn-ink: #e0c489;
-  --warn-soft: #d3b26a24;
-  --err: #e2795f;
-  --err-ink: #ec907b;
-  --err-soft: #e2795f26;
-
-  --mark-bg: #4a3f1a;
-  --mark-ink: #ffd866;
-
+  --accent: #58ccd0;
+  --accent-ink: #83dfdf;
+  --accent-hover: #83dfdf;
+  --accent-soft: #58ccd029;
+  --accent-softer: #58ccd019;
+  --accent-contrast: #103134;
   --selection: #12ccd838;
 
-  /* 暗色下投影不分层：浅阴影在深底上要么看不见、要么糊成一圈灰。
-     改用描边区分层级 —— 这是暗色界面的通行做法。 */
-  --shadow-card: none;
-  --shadow-pop: 0 16px 40px #00000073;
+  --ok: #73d5a7;
+  --ok-ink: #a6e5bf;
+  --ok-soft: #73d5a726;
+  --warn: #f0c479;
+  --warn-ink: #f4d092;
+  --warn-soft: #f0c47924;
+  --err: #f29c9b;
+  --err-ink: #ffc7c8;
+  --err-soft: #f29c9b24;
+  --sub-info-ink: #9ccbf1;
+  --sub-info-soft: #4795d32b;
 
-  /* hover 抬起用的阴影，暗色下**不能照搬亮色那个轻阴影**：
-     亮色底是浅的，一点点灰就能看出层次；深底上同样的透明灰会被底吃掉，
-     等于什么都没发生。所以这里给一个更黑、更实的影子（与 --shadow-pop
-     同一量级），配合 S1 里同时加深的描边，抬起才真的看得见。 */
+  --shadow-card: none;
+  --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.42);
   --shadow-raise: 0 10px 28px #000000b3;
 }
 
@@ -252,12 +189,11 @@
    右栏一屏从 13 行掉到 12 行、卡片高度 +2.9%；1.70 是"每行都读得下来"的下端，
    且 13 行保得住。在规格给的 1.7–1.8 之间，这里选**代价最小的那一档**。
 
-   注意 `.answer-body`（1.9）与 `.chat-text`（1.7）是逐字读的区域，另有取值，
-   不跟着这一条走。 */
+   长正文和整理对话使用各自的阅读字号及行距。 */
 body {
   margin: 0;
   background: var(--bg);
-  color: var(--ink);
+  color: var(--ink-2);
   font-family: var(--font-sans);
   font-size: 0.875rem; /* 14px */
   line-height: 1.7;
@@ -990,7 +926,7 @@ pre {
 
 .form-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .field { display: flex; flex-direction: column; gap: 5px; }
-.field > span { font-size: 0.8125rem; color: var(--ink-3); }
+.field > span { font-size: 0.8125rem; font-weight: 550; color: var(--ink-3); }
 
 /* 占位文字各浏览器默认用的是当前字色的半透明版本，
    在两套主题下深浅不一致。显式给一个层级色，保证"这是示例不是已填内容"。 */
@@ -1548,7 +1484,7 @@ button[type="submit"]:disabled:hover {
 .ask-warning-summary details { margin-top: 8px; }
 .ask-warning-summary summary { cursor: pointer; font-weight: 600; }
 .ask-warning-summary summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.notice-body { margin: 0 0 6px; }
+.notice-body { margin: 0 0 6px; overflow-wrap: anywhere; }
 .notice-foot { margin: 0; font-size: 0.75rem; color: var(--ink-3); }
 .notice-list { margin: 6px 0 0; padding-left: 20px; color: var(--ink-2); font-size: 0.8125rem; }
 .notice-list li { margin-bottom: 3px; }
@@ -1711,12 +1647,13 @@ a.workbench-item:hover { background: var(--surface-2); }
    表格是文档列表、账号列表这些页面的**主体**，13px 在那几页里偏小。
    纵向内边距同时从 11px 收到 10px：字号大了行高会跟着涨，
    收 1px 把行高拉回原样，一屏能看到的行数不变。 */
-.table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.table { width: 100%; border-collapse: collapse; font-size: 0.875rem; color: var(--ink-2); }
 .table th {
   text-align: left;
-  font-weight: 500;
+  font-weight: 650;
   font-size: 0.75rem; /* 12px */
-  color: var(--ink-4);
+  color: var(--ink-3);
+  background: var(--surface-2);
   /* 表头是中文（「标题」「材料」「块数 / 向量」），同 .nav-group-title 的理由：
      中文小标题不加西文那种字距。0.06em 在 12px 上约 0.7px，看着像排版松了。 */
   letter-spacing: 0.02em;
@@ -1728,9 +1665,20 @@ a.workbench-item:hover { background: var(--surface-2); }
 }
 .table td {
   padding: 10px 10px;
-  border-bottom: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line);
   vertical-align: top;
 }
+.table tbody th[scope="row"] {
+  background: transparent;
+  border-bottom-color: var(--line);
+  font-size: inherit;
+  font-weight: 500;
+  letter-spacing: normal;
+  padding: 10px;
+  vertical-align: top;
+}
+.table td.table-value { color: var(--ink); font-weight: 600; }
+.table td.table-number { color: var(--emphasis-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
 /* hover 整行加深：这份表一行里信息很多（标题 / 材料 / 状态 / 块数 / 时间），
    眼睛需要一条水平参考线才能不串行。
    过渡用最短那档（120ms）且只补 `background`：鼠标在表格上通常是**扫**，
@@ -1740,7 +1688,7 @@ a.workbench-item:hover { background: var(--surface-2); }
   transition: background var(--t-fast) var(--ease-out);
 }
 .table tbody tr:hover { background: var(--surface-2); }
-.table tr:last-child td { border-bottom: none; }
+.table tr:last-child td, .table tbody tr:last-child th[scope="row"] { border-bottom: none; }
 .doc-title { word-break: break-word; }
 
 .doc-parse {
@@ -1800,9 +1748,8 @@ a.workbench-item:hover { background: var(--surface-2); }
 .hit-path { margin: 0 0 8px; font-size: 0.75rem; color: var(--accent-ink); }
 .hit-snippet { margin: 0; font-size: 0.84375rem; line-height: 1.8; word-break: break-word; }
 
-/* 命中词高亮：只改背景与字色，不加粗 ——
-   中文在加粗后笔画会糊成一片，反而更难认出命中的是哪两个字。 */
-mark {
+/* 只在结果和证据的实际命中元素上应用。 */
+.hit-snippet mark {
   background: var(--mark-bg);
   color: var(--mark-ink);
   border-radius: 3px;
@@ -1815,36 +1762,34 @@ mark {
    不保留的话整段回答会挤成一坨，长回答完全没法读。 */
 .answer-body {
   margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.9;
+  color: var(--ink-2);
+  font-size: var(--reading-size);
+  line-height: var(--reading-leading);
   white-space: pre-wrap;
   word-break: break-word;
-  /* 回答是这一页唯一需要逐字读的东西，行宽单独收窄到约 40 个汉字。 */
-  max-width: 40em;
+  max-inline-size: var(--reading-measure);
 }
 
-/* 正文里的 [E1] 引用标记（O9 起是编号小标签）。
-   仍然不用检索页 <mark> 那种黄色底：同一页出现两种黄色会让人分不清
-   "这个词命中了"和"这句有出处"。改用主色浅底 + 圆角，可点的迹象常驻
-   （底色本身就是迹象），不再依赖下划线。 */
+/* 引用用描边编号，和强调文字、真实命中区分。 */
 .cite-mark {
   display: inline-block;
-  padding: 0 4px;
+  padding: 0 .3em;
+  border: 1px solid var(--citation-line);
   border-radius: 4px;
-  background: var(--accent-softer);
-  color: var(--accent-ink);
-  font-weight: 500;
+  color: var(--citation-ink);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
   /* 与正文同档：可点的东西不得比正文小（见文件头的可读性底线）。 */
   font-size: inherit;
   line-height: 1.5;
   text-decoration: none;
   cursor: pointer;
 }
-.cite-mark:hover { background: var(--accent-soft); }
+.cite-mark:hover { background: var(--emphasis-soft); color: var(--citation-ink); }
 .cite-mark:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-  background: var(--accent-soft);
+  background: var(--emphasis-soft);
 }
 
 /* 引用编号的定位容器：悬浮卡以它为准绝对定位。 */
@@ -2398,35 +2343,38 @@ button.danger:hover:not(:disabled) {
 }
 .chat-msg { display: flex; flex-direction: column; gap: 4px; max-width: 46em; }
 .chat-msg.user { align-self: flex-end; align-items: flex-end; }
-.chat-role { font-size: 0.6875rem; color: var(--ink-4); }
+.chat-role { font-size: .75rem; color: var(--ink-3); font-weight: 650; }
 .chat-text {
   padding: 9px 13px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface-2);
-  font-size: 0.8125rem;
-  line-height: 1.7;
+  font-size: var(--reading-size);
+  line-height: var(--reading-leading);
   /* 模型的回复里带着换行（它会把计划一条条列出来），必须原样保留：
      丢掉换行会让"把 A 移到 B、把 C 移到 D"糊成一整句，看不清有几条。 */
   white-space: pre-wrap;
   word-break: break-word;
 }
-.chat-msg.user .chat-text { background: var(--accent-soft); border-color: transparent; }
+.chat-msg.user .chat-text { background: var(--emphasis-soft); border-color: var(--citation-line); }
 .chat-hint { font-size: 0.75rem; margin: 8px 0 0; }
 
 .chat-compose { margin: 12px 0 0; }
 .chat-compose-foot { display: flex; align-items: center; gap: 10px; margin: 8px 0 0; }
 
-/* 计划说明。左侧一道主色竖线：它是整份计划里唯一**不可编辑**的部分
-   （Agent 拟的原话），要一眼区别于下面那些可以改的规则。 */
+/* 计划说明和可编辑的规则使用不同表面。 */
 .plan-summary {
   margin: 0 0 12px;
   padding: 11px 14px;
-  border-left: 3px solid var(--accent);
+  border-inline-start: 3px solid var(--citation-line);
   border-radius: var(--radius-sm);
-  background: var(--accent-softer);
-  font-size: 0.8125rem;
-  line-height: 1.7;
+  background: var(--emphasis-soft);
+  color: var(--emphasis-ink);
+  max-inline-size: var(--reading-measure);
+  font-size: var(--reading-size);
+  line-height: var(--reading-leading);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .plan-rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -2456,7 +2404,8 @@ button.danger:hover:not(:disabled) {
 .plan-execute { margin: 14px 0 0; padding-top: 12px; border-top: 1px dashed var(--line); }
 
 .preview { margin: 14px 0 0; }
-.preview-facts { margin: 0 0 10px; font-size: 0.8125rem; }
+.preview-facts { margin: 0 0 10px; font-size: .9375rem; }
+.preview-facts b { color: var(--emphasis-ink); font-variant-numeric: tabular-nums; }
 .preview-dirs { margin: 0 0 10px; font-size: 0.75rem; word-break: break-all; }
 .preview-rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .preview-rule { padding-top: 10px; border-top: 1px solid var(--line); }
@@ -3154,10 +3103,12 @@ button.danger:hover:not(:disabled) {
 /* 正文用 `pre-wrap` 是必需的，不是顺手加的：结构化后的正文可能带换行
    （模型按要点分行写）。按普通段落渲染会把换行吃掉，几条知识连成一坨。 */
 .kb-entry-body {
-  margin: 0 0 6px;
+  margin: .25rem 0 .75rem;
+  max-inline-size: var(--reading-measure);
+  font-size: var(--reading-size);
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.7;
+  line-height: var(--reading-leading);
 }
 .kb-entry-meta { margin: 0; font-size: 0.8125rem; color: var(--ink-3); }
 
@@ -3182,7 +3133,13 @@ button.danger:hover:not(:disabled) {
   background: var(--warn-soft);
 }
 .kb-conflict-head { margin: 0 0 4px; font-size: 0.8125rem; font-weight: 600; color: var(--warn-ink); }
-.kb-conflict-body { margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.7; }
+.kb-conflict-body {
+  margin: 0;
+  font-size: var(--reading-size);
+  line-height: var(--reading-leading);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 
 /* 一条底部的动作行。虚线上边与 .sub-actions 同一个手法：把"能做的事"
    与"这条是什么"分开，同时不让每一行看起来像一个表单。 */

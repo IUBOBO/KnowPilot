@@ -8,13 +8,13 @@
 .pdf-preview-controls form, .pdf-preview-zoom { display: flex; align-items: center; gap: .375rem; }
 .pdf-preview-controls input[type='number'] { width: 4.5rem; }
 .pdf-preview-controls [aria-disabled='true'] { opacity: .55; cursor: default; }
-.pdf-preview-label { margin: .375rem 0; }
+.pdf-preview-label { margin: .5rem 0; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .pdf-preview-scroll {
   max-height: 56dvh;
   overflow: auto;
   padding: .25rem;
-  background: var(--surface-muted, #edf1f5);
-  border: 1px solid var(--line-soft);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
 }
 .evidence-reader-expanded .pdf-preview-scroll { max-height: 62dvh; }
 .dialog:has(.pdf-preview-controls) { display: flex; flex-direction: column; overflow: hidden; }

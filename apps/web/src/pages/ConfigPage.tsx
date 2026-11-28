@@ -206,14 +206,14 @@ function EffectiveCard({
         </thead>
         <tbody>
           <tr>
-            <td>接口地址</td>
-            <td className="mono">{model.baseUrl}</td>
+            <th scope="row">接口地址</th>
+            <td className="mono table-value">{model.baseUrl}</td>
             <td><SourcePill source={model.baseUrlSource} /></td>
             <StoredCells source={model.baseUrlSource} row={rowOf(MODEL_CONFIG_KEYS.baseUrl)} />
           </tr>
           <tr>
-            <td>对话模型</td>
-            <td className="mono">
+            <th scope="row">对话模型</th>
+            <td className="mono table-value">
               {model.chatModel}
               <EstimateNote show={!model.chatInCatalog} />
             </td>
@@ -221,8 +221,8 @@ function EffectiveCard({
             <StoredCells source={model.chatModelSource} row={rowOf(MODEL_CONFIG_KEYS.chat)} />
           </tr>
           <tr>
-            <td>推理模型</td>
-            <td className="mono">
+            <th scope="row">推理模型</th>
+            <td className="mono table-value">
               {model.reasonerModel}
               <EstimateNote show={!model.reasonerInCatalog} />
             </td>
@@ -230,7 +230,7 @@ function EffectiveCard({
             <StoredCells source={model.reasonerModelSource} row={rowOf(MODEL_CONFIG_KEYS.reasoner)} />
           </tr>
           <tr>
-            <td>API key</td>
+            <th scope="row">API key</th>
             {/* 密钥**没有值可显示**，永远只说"有 / 没有"以及它是从哪儿来的。 */}
             <td className="dim">{model.apiKeySource === 'none' ? '未设置' : '已设置（不回显）'}</td>
             <td><SourcePill source={model.apiKeySource} secret /></td>

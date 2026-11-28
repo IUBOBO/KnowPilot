@@ -65,8 +65,8 @@ function OwnedDiscoveryPanel() {
       {response.enabled && response.items.length > 0 && <ul>
         {response.items.map((item) => <li key={item.id}>
           <strong>{KNOWLEDGE_DISCOVERY_LABELS[item.kind]} · {sourceNames[item.source.kind]}</strong>
-          <p>{item.excerpt}</p>
-          <p>{item.reason}</p>
+          <p className="kb-entry-body">{item.excerpt}</p>
+          <p className="kb-hint">{item.reason}</p>
           {item.neighbor !== null && <details><summary>对照已发布条目</summary><p>{item.neighbor.excerpt}</p></details>}
           <div className="note-buttons">
             {item.kind !== 'duplicate' && item.kind !== 'insufficient' &&

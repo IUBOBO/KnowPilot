@@ -24,15 +24,21 @@
   padding-bottom: .625rem;
   border-bottom: 1px solid var(--line-soft);
 }
-.evidence-reader-header h2 { margin: 0; font-size: 1rem; }
+.evidence-reader-header h2 { margin: 0; font-size: 1rem; color: var(--ink); }
 .evidence-reader-body { overflow-wrap: anywhere; }
-.evidence-reader-body h3 { margin-bottom: .375rem; }
-.evidence-reader-note { padding: .5rem .75rem; border-left: 3px solid var(--accent); }
+.evidence-reader-body h3 { margin-bottom: .375rem; color: var(--ink); line-height: 1.45; }
+.evidence-reader-note { padding: .5rem .75rem; border-inline-start: 3px solid var(--citation-line); background: var(--emphasis-soft); }
 .evidence-reader-selector { display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-top: .625rem; }
-.evidence-reader-excerpt { white-space: pre-wrap; line-height: 1.7; }
-.evidence-reader-excerpt mark { background: var(--warn-soft); color: inherit; border-radius: .18rem; }
+.evidence-reader-excerpt {
+  max-inline-size: var(--reading-measure);
+  margin-block: .875rem;
+  font-size: var(--reading-size);
+  line-height: var(--reading-leading);
+  white-space: pre-wrap;
+}
+.evidence-reader-excerpt mark { background: var(--mark-bg); color: var(--mark-ink); border-radius: .18rem; font-weight: 600; }
 .evidence-reader-fields div { padding-block: .375rem; border-bottom: 1px solid var(--line-soft); }
-.evidence-reader-fields dt { font-weight: 650; }
+.evidence-reader-fields dt { font-size: .8125rem; font-weight: 600; color: var(--ink-3); }
 .evidence-reader-fields dd { margin: .25rem 0 0; }
 .dialog:has(.evidence-reader-expanded) {
   width: min(96vw, 75rem);

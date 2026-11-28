@@ -254,7 +254,7 @@ function ConflictRow({
       </p>
 
       {/* 新条目：完整正文。 */}
-      <div className="kb-conflict">
+      <div className="kb-conflict review-incoming">
         <p className="kb-conflict-head">待裁决的这条（新提交）</p>
         <p className="kb-conflict-body">{entry.content}</p>
       </div>
@@ -392,7 +392,7 @@ function ReviewComparison({ entry, neighbor, sources }: {
     { label: '新提交新增', lines: added },
     { label: '仅旧条目保留', lines: removed },
   ];
-  return <details className="kb-conflict">
+  return <details className="kb-conflict review-provenance">
     <summary>来源、版本和正文差异</summary>
     <p>新来源 {sourceLabels[entry.sourceType]} · 旧来源 {neighbor ? sourceLabels[neighbor.sourceType] : '当前不可读取'}</p>
     <ReviewSource entry={entry} source={sources?.[entry.id]} label="新来源核验" />
