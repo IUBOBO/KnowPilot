@@ -341,16 +341,28 @@
     },
     {
       "id": "G5",
-      "status": "in_progress",
+      "status": "passed",
       "report": "docs/plans/v2/gates/G5.md",
-      "merge_sha": null,
+      "merge_sha": "2510e1b3ee2d80492dad5bc8d48a9c80f3b7a10d",
       "acceptance": {
-        "status": "not_run",
-        "reviewer": null,
-        "evidence": []
+        "status": "passed",
+        "reviewer": "user",
+        "approval_recorded_at": "2026-11-28T05:55:02Z",
+        "scope": "user_approved_final_evidence_with_documented_gaps",
+        "evidence": [
+          "docs/plans/v2/gates/G5.md",
+          "docs/plans/v2/V2-13.md",
+          "https://github.com/IUBOBO/KnowPilot/pull/39#issuecomment-7234628982",
+          "https://github.com/IUBOBO/KnowPilot/pull/39#issuecomment-7234661822",
+          "https://github.com/IUBOBO/KnowPilot/issues/13#issuecomment-7234964873"
+        ],
+        "reason": "The user approved G5 within the disclosed evidence boundaries and authorized closing Issue #13. G5-B self-reports have no source artifacts. Historical automated results remain unchanged."
       },
       "blockers": [],
-      "offline_evidence": "docs/plans/v2/gates/G5.md"
+      "offline_evidence": "docs/plans/v2/gates/G5.md",
+      "completed_nodes": [
+        "G5.pass"
+      ]
     }
   ],
   "tasks": [
@@ -845,7 +857,7 @@
     {
       "issue": 13,
       "stable_id": "V2-13",
-      "state": "in_progress",
+      "state": "accepted",
       "owner_role": "Quality/eval",
       "owner": "coordinator",
       "branch": "eval/v2-g0-evidence",
@@ -876,23 +888,34 @@
         "13-B.10.post",
         "13-B.11.post",
         "13-B.12.pre",
-        "13-B.12.post"
+        "13-B.12.post",
+        "13-C.run",
+        "13-C.accepted",
+        "13-C.merged",
+        "13-C.post-merge-verified",
+        "G5.pass"
       ],
       "prs": [
-        16
+        16,
+        39
       ],
-      "head_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
-      "head_sha_scope": "g0_postmerge_tested_commit",
-      "merge_sha": "07642b4ab8e2c6eae0d3da8107af2ffe5833e3d5",
+      "head_sha": "996d523c3d72e0cc6f1449506c06fe8a4251fe72",
+      "head_sha_scope": "reviewed_final_acceptance_pr_head",
+      "merge_sha": "2510e1b3ee2d80492dad5bc8d48a9c80f3b7a10d",
       "acceptance": {
-        "status": "pending",
+        "status": "passed",
         "evidence": [
           "docs/plans/v2/gates/G0.md",
           "docs/plans/v2/V2-13.md",
-          "docs/plans/v2/gates/G5.md"
+          "docs/plans/v2/gates/G5.md",
+          "https://github.com/IUBOBO/KnowPilot/pull/39#issuecomment-7234628982",
+          "https://github.com/IUBOBO/KnowPilot/pull/39#issuecomment-7234661822",
+          "https://github.com/IUBOBO/KnowPilot/issues/13#issuecomment-7234964873"
         ],
-        "reviewer": null,
-        "reason": "All three G5-B checks passed according to user testing. Source artifacts and measured details were not provided. The final evidence scope and G5 gate await review."
+        "reviewer": "user",
+        "reason": "The user approved G5 within the disclosed evidence boundaries and authorized closing Issue #13. G5-B self-reports have no source artifacts. Historical automated results remain unchanged.",
+        "scope": "user_approved_final_evidence_with_documented_gaps",
+        "approval_recorded_at": "2026-11-28T05:55:02Z"
       },
       "release_node": "G5.pass",
       "phases": {
@@ -1634,8 +1657,8 @@
           }
         },
         "13-C": {
-          "state": "in_progress",
-          "acceptance": "not_run",
+          "state": "accepted",
+          "acceptance": "passed",
           "released_by": [
             "G4.pass",
             "1.released",
@@ -1651,12 +1674,12 @@
             "11.released",
             "12.released"
           ],
-          "scope": "G5-A manual overall acceptance confirmed; user confirmed actual GC-08, GC-09 and BGE-M3 passes; source artifacts not provided; G5 final gate pending",
+          "scope": "User-approved G5-A manual overall pass and three G5-B user-reported passes. Source artifacts were not provided. Historical automated outcomes remain unchanged.",
           "g5_b_model_checks": "not_run",
           "stage_record_pr": 36,
           "branch": "codex/g5-offline-eval",
           "worktree_alias": "KnowPilot-V2-G5",
-          "review_status": "pending",
+          "review_status": "passed",
           "g5_a": {
             "status": "recorded",
             "tested_main_sha": "663792ba1c59855b64829903a3df29c0ada3555d",
@@ -1752,9 +1775,36 @@
           },
           "g5_b_model_checks_scope": "codex_automated_execution",
           "quality_matrix": "docs/plans/v2/evidence/g5-final/quality-matrix.md",
-          "known_issues": "docs/plans/v2/evidence/g5-final/known-issues.md"
+          "known_issues": "docs/plans/v2/evidence/g5-final/known-issues.md",
+          "final_evidence_pr": 39,
+          "reviewed_head_sha": "996d523c3d72e0cc6f1449506c06fe8a4251fe72",
+          "merge_sha": "2510e1b3ee2d80492dad5bc8d48a9c80f3b7a10d",
+          "merge_tree_sha": "1cd10568ae34ed5d1c23a4501234c137937eb875",
+          "pre_merge_acceptance": {
+            "status": "passed",
+            "reviewer": "user",
+            "recorded_at": "2026-11-28T05:22:27Z",
+            "evidence": "https://github.com/IUBOBO/KnowPilot/pull/39#issuecomment-7234628982"
+          },
+          "post_merge_verification": {
+            "status": "passed",
+            "scope": "git_refs_and_archived_documents",
+            "verified_merge_sha": "2510e1b3ee2d80492dad5bc8d48a9c80f3b7a10d",
+            "recorded_at": "2026-11-28T05:25:36Z",
+            "full_functional_suite_rerun": false,
+            "evidence": "https://github.com/IUBOBO/KnowPilot/pull/39#issuecomment-7234661822"
+          },
+          "final_approval": {
+            "status": "passed",
+            "reviewer": "user",
+            "recorded_at": "2026-11-28T05:55:02Z",
+            "evidence": "https://github.com/IUBOBO/KnowPilot/issues/13#issuecomment-7234964873"
+          }
         }
-      }
+      },
+      "issue_state": "closed",
+      "issue_closed_at": "2026-11-28T05:55:34Z",
+      "issue_state_reason": "completed"
     }
   ],
   "development_baseline_sha": "43723bd4cc354e71661ac791f456afddfe7f6b20"
