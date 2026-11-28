@@ -892,7 +892,7 @@
           "docs/plans/v2/gates/G5.md"
         ],
         "reviewer": null,
-        "reason": "13-A and 13-B offline evidence recorded. The user confirmed the G5-A manual test overall. G5-B is user-owned and pending results. Final 13-C and G5 acceptance remain pending."
+        "reason": "All three G5-B checks passed according to user testing. Source artifacts and measured details were not provided. The final evidence scope and G5 gate await review."
       },
       "release_node": "G5.pass",
       "phases": {
@@ -1651,7 +1651,7 @@
             "11.released",
             "12.released"
           ],
-          "scope": "G5-A manual overall acceptance confirmed by user; G5-B user verification and results pending",
+          "scope": "G5-A manual overall acceptance confirmed; user confirmed actual GC-08, GC-09 and BGE-M3 passes; source artifacts not provided; G5 final gate pending",
           "g5_b_model_checks": "not_run",
           "stage_record_pr": 36,
           "branch": "codex/g5-offline-eval",
@@ -1716,10 +1716,10 @@
             }
           },
           "g5_b": {
-            "status": "not_run",
+            "status": "user_confirmed",
             "verification_owner": "user",
             "codex_automation": "disabled",
-            "result_status": "pending_user_backfill",
+            "result_status": "user_reported_passes_no_source_artifacts",
             "checks": [
               "GC-08",
               "GC-09",
@@ -1731,8 +1731,28 @@
               "input_tokens": 0,
               "output_tokens": 0,
               "cost_usd": 0
+            },
+            "results": {
+              "GC-08": {
+                "status": "passed",
+                "source": "user_reported",
+                "evidence": "not_provided"
+              },
+              "GC-09": {
+                "status": "passed",
+                "source": "user_reported",
+                "evidence": "not_provided"
+              },
+              "BGE-M3": {
+                "status": "passed",
+                "source": "user_reported",
+                "evidence": "not_provided"
+              }
             }
-          }
+          },
+          "g5_b_model_checks_scope": "codex_automated_execution",
+          "quality_matrix": "docs/plans/v2/evidence/g5-final/quality-matrix.md",
+          "known_issues": "docs/plans/v2/evidence/g5-final/known-issues.md"
         }
       }
     }
