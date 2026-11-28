@@ -1,0 +1,242 @@
+{
+  "version": 1,
+  "release": "v2.0.0",
+  "issue": 41,
+  "approved_source": {
+    "main_sha": "e077d662783f69de525d598c0ee9679603199006",
+    "plan": "docs/plans/v2/V2.0.0-RELEASE-PLAN.md",
+    "plan_url": "https://github.com/IUBOBO/KnowPilot/blob/e077d662783f69de525d598c0ee9679603199006/docs/plans/v2/V2.0.0-RELEASE-PLAN.md"
+  },
+  "completed": [
+    "base.verified"
+  ],
+  "parallel_groups": [
+    [
+      "R1.done",
+      "R2.done",
+      "R3.done",
+      "R4.done"
+    ]
+  ],
+  "nodes": [
+    {
+      "id": "base.verified",
+      "kind": "baseline",
+      "description": "PR #40 已合并并核对 G5.pass、Issue #13 completed 和三处 main"
+    },
+    {
+      "id": "planning.merged",
+      "kind": "human_merge_gate",
+      "description": "发布规划 PR 获批合并，重新核对实际 main 作为文档起点"
+    },
+    {
+      "id": "R1.done",
+      "kind": "document",
+      "task": "R1",
+      "description": "README 内容已交付，集成时链接和命令可核对"
+    },
+    {
+      "id": "R2.done",
+      "kind": "document",
+      "task": "R2",
+      "description": "系统与 Agent 架构已交付并对照真实源码"
+    },
+    {
+      "id": "R3.done",
+      "kind": "validation",
+      "task": "R3",
+      "description": "部署配置已交付，隔离安装、启动、迁移和同源托管验证有证据"
+    },
+    {
+      "id": "R4.done",
+      "kind": "validation",
+      "task": "R4",
+      "description": "运维备份恢复已交付，隔离 v37→v38 演练有证据"
+    },
+    {
+      "id": "R5.pre",
+      "kind": "security_review",
+      "task": "R5",
+      "description": "R1–R4 集成候选初审通过"
+    },
+    {
+      "id": "R6.notes",
+      "kind": "preview",
+      "task": "R6",
+      "description": "Release Notes 预览完成并记录版本显示关系"
+    },
+    {
+      "id": "R5.pre-merge",
+      "kind": "security_review",
+      "task": "R5",
+      "description": "含 Release Notes 的候选、附件范围和预期归档通过复审"
+    },
+    {
+      "id": "docs.merge-approved",
+      "kind": "human_approval",
+      "description": "用户批准合并指定发布文档 PR 提交"
+    },
+    {
+      "id": "docs.merged",
+      "kind": "merge",
+      "description": "发布文档 PR 已合并，记录实际 SHA 和 tree"
+    },
+    {
+      "id": "R5.post-merge",
+      "kind": "security_review",
+      "task": "R5",
+      "description": "实际合并树及拟发布资产通过安全复审"
+    },
+    {
+      "id": "R6.candidate",
+      "kind": "candidate",
+      "task": "R6",
+      "description": "冻结最终 main SHA，核对 R3/R4 定向证据并交付 Release Notes 预览"
+    },
+    {
+      "id": "tag.approved",
+      "kind": "human_approval",
+      "description": "用户明确批准在冻结 SHA 创建 v2.0.0 标签"
+    },
+    {
+      "id": "release.approved",
+      "kind": "human_approval",
+      "description": "用户明确批准该冻结 SHA、版本说明和资产范围的正式发布"
+    },
+    {
+      "id": "R6.tagged",
+      "kind": "tag",
+      "task": "R6",
+      "description": "获批后创建并核对远程 tag 指向冻结 SHA"
+    },
+    {
+      "id": "R6.published",
+      "kind": "publish",
+      "task": "R6",
+      "description": "获批后在已经核验的标签上发布 GitHub Release"
+    },
+    {
+      "id": "R6.verified",
+      "kind": "verification",
+      "task": "R6",
+      "description": "核对标签、Release、发布说明、源码归档与冻结 SHA"
+    }
+  ],
+  "edges": [
+    {
+      "from": "base.verified",
+      "to": "planning.merged",
+      "kind": "start"
+    },
+    {
+      "from": "planning.merged",
+      "to": "R1.done",
+      "kind": "start"
+    },
+    {
+      "from": "planning.merged",
+      "to": "R2.done",
+      "kind": "start"
+    },
+    {
+      "from": "planning.merged",
+      "to": "R3.done",
+      "kind": "start"
+    },
+    {
+      "from": "planning.merged",
+      "to": "R4.done",
+      "kind": "start"
+    },
+    {
+      "from": "R1.done",
+      "to": "R5.pre",
+      "kind": "integration"
+    },
+    {
+      "from": "R2.done",
+      "to": "R5.pre",
+      "kind": "integration"
+    },
+    {
+      "from": "R3.done",
+      "to": "R5.pre",
+      "kind": "integration"
+    },
+    {
+      "from": "R4.done",
+      "to": "R5.pre",
+      "kind": "integration"
+    },
+    {
+      "from": "R5.pre",
+      "to": "R6.notes",
+      "kind": "start"
+    },
+    {
+      "from": "R6.notes",
+      "to": "R5.pre-merge",
+      "kind": "review"
+    },
+    {
+      "from": "R5.pre-merge",
+      "to": "docs.merge-approved",
+      "kind": "gate"
+    },
+    {
+      "from": "docs.merge-approved",
+      "to": "docs.merged",
+      "kind": "merge"
+    },
+    {
+      "from": "docs.merged",
+      "to": "R5.post-merge",
+      "kind": "review"
+    },
+    {
+      "from": "R5.post-merge",
+      "to": "R6.candidate",
+      "kind": "security_gate"
+    },
+    {
+      "from": "R3.done",
+      "to": "R6.candidate",
+      "kind": "evidence"
+    },
+    {
+      "from": "R4.done",
+      "to": "R6.candidate",
+      "kind": "evidence"
+    },
+    {
+      "from": "R6.candidate",
+      "to": "tag.approved",
+      "kind": "gate"
+    },
+    {
+      "from": "R6.candidate",
+      "to": "release.approved",
+      "kind": "gate"
+    },
+    {
+      "from": "tag.approved",
+      "to": "R6.tagged",
+      "kind": "authorization"
+    },
+    {
+      "from": "R6.tagged",
+      "to": "R6.published",
+      "kind": "artifact"
+    },
+    {
+      "from": "release.approved",
+      "to": "R6.published",
+      "kind": "authorization"
+    },
+    {
+      "from": "R6.published",
+      "to": "R6.verified",
+      "kind": "verification"
+    }
+  ]
+}
