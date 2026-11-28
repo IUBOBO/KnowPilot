@@ -6,6 +6,10 @@
     [
       "UX-01.implement",
       "UX-02.implement"
+    ],
+    [
+      "UX-04.implement",
+      "UX-05.implement"
     ]
   ],
   "nodes": [
@@ -67,6 +71,70 @@
       "branch": "codex/ux-02-search-readability",
       "kind": "human_merge",
       "description": "人工合并，按实际 SHA 复查"
+    },
+    {
+      "id": "visual-planning.approved",
+      "kind": "human_plan_review",
+      "description": "批准全站可读性规划"
+    },
+    {
+      "id": "UX-03.implement",
+      "kind": "implementation",
+      "description": "独立工作树与 PR，落实全局 Token、公共表现和两套主题",
+      "task": "UX-03",
+      "issue": 48,
+      "plan": "UX-03.md",
+      "branch": "codex/ux-03-visual-tokens"
+    },
+    {
+      "id": "UX-03.frozen",
+      "kind": "freeze_gate",
+      "description": "UX-03 人工验收合并，在实际主线冻结规范并记录验证证据",
+      "task": "UX-03",
+      "issue": 48,
+      "plan": "UX-03.md",
+      "branch": "codex/ux-03-visual-tokens"
+    },
+    {
+      "id": "UX-04.implement",
+      "kind": "implementation",
+      "description": "独立工作树与 PR，阅读和 Agent 展示",
+      "task": "UX-04",
+      "issue": 49,
+      "plan": "UX-04.md",
+      "branch": "codex/ux-04-reading-agent"
+    },
+    {
+      "id": "UX-04.accepted",
+      "kind": "verification",
+      "description": "人工验收合并，按实际主线复查阅读与证据",
+      "task": "UX-04",
+      "issue": 49,
+      "plan": "UX-04.md",
+      "branch": "codex/ux-04-reading-agent"
+    },
+    {
+      "id": "UX-05.implement",
+      "kind": "implementation",
+      "description": "独立工作树与 PR，科研台账与后台",
+      "task": "UX-05",
+      "issue": 50,
+      "plan": "UX-05.md",
+      "branch": "codex/ux-05-ledger-admin"
+    },
+    {
+      "id": "UX-05.accepted",
+      "kind": "verification",
+      "description": "人工验收合并，按实际主线复查数据展示和权限",
+      "task": "UX-05",
+      "issue": 50,
+      "plan": "UX-05.md",
+      "branch": "codex/ux-05-ledger-admin"
+    },
+    {
+      "id": "visual.integrated",
+      "kind": "verification",
+      "description": "从实际主线做全站一致性核对，记录矩阵和代表对照图"
     }
   ],
   "edges": [
@@ -93,6 +161,47 @@
     {
       "from": "UX-02.accepted",
       "to": "UX-02.merged"
+    },
+    {
+      "from": "UX-01.merged",
+      "to": "visual-planning.approved"
+    },
+    {
+      "from": "UX-02.merged",
+      "to": "visual-planning.approved"
+    },
+    {
+      "from": "visual-planning.approved",
+      "to": "UX-03.implement"
+    },
+    {
+      "from": "UX-03.implement",
+      "to": "UX-03.frozen"
+    },
+    {
+      "from": "UX-03.frozen",
+      "to": "UX-04.implement"
+    },
+    {
+      "from": "UX-03.frozen",
+      "to": "UX-05.implement"
+    },
+    {
+      "from": "UX-04.implement",
+      "to": "UX-04.accepted"
+    },
+    {
+      "from": "UX-05.implement",
+      "to": "UX-05.accepted"
+    },
+    {
+      "from": "UX-04.accepted",
+      "to": "visual.integrated"
+    },
+    {
+      "from": "UX-05.accepted",
+      "to": "visual.integrated"
     }
-  ]
+  ],
+  "visual_baseline": "0a2b73e7049bd692d3412b964a822b59428db57b"
 }
