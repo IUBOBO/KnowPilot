@@ -6,6 +6,7 @@ import {
   type FeedbackDownReason, type FeedbackRating, type OpenEvidence, type SubmitFeedbackResponse,
 } from '@knowpilot/shared';
 import { ApiError, apiPost, isAbort, toApiError } from '../../api.ts';
+import { ConfirmDialog } from '../../components/ConfirmDialog.tsx';
 import { ErrorNotice } from '../../components/ErrorNotice.tsx';
 import { formatCnyFromUsd } from '../../currency.ts';
 import { FinalAnswerBody } from './AnswerMarkdown.tsx';
@@ -20,6 +21,7 @@ interface AskAnswerProps {
   result: AskResponse;
   byId: ReadonlyMap<string, Citation>;
   consent: boolean;
+  reviewActive?: boolean;
   sourceCount: number;
   readerOpen: boolean;
   sourceButtonRef: RefObject<HTMLButtonElement | null>;
@@ -31,7 +33,8 @@ interface AskAnswerProps {
 }
 
 export function AskAnswer({
-  result, byId, consent, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks, onOpenEvidence, documentSearchLink,
+  result, byId, consent, reviewActive = true, sourceCount, readerOpen, sourceButtonRef, onToggleReader, onRetry, blocks,
+  onOpenEvidence, documentSearchLink,
 }: AskAnswerProps) {
   const sources = onOpenEvidence === undefined ? {} : { citationOpen: { runId: result.runId, onOpenEvidence } };
   return (
@@ -75,7 +78,8 @@ export function AskAnswer({
         </div>
       ) : null}
       {result.answer.citations.length > 0 && (
-        <AnswerEvidenceReview key={`review-${result.runId}`} response={result} consent={consent} byId={byId} {...sources} />
+        <AnswerEvidenceReview key={`review-${result.runId}`} response={result} consent={consent}
+          pageActive={reviewActive} byId={byId} {...sources} />
       )}
       {/* O16：确定性出口。服务端只在"某类记录查询 0 命中"或
           "整次回答没有任何引用且列了依据缺口"时给；前端不自己推断。 */}
@@ -104,51 +108,125 @@ export function AskAnswer({
   );
 }
 
-function AnswerEvidenceReview({ response, consent, byId, citationOpen }: {
+// Allow the server's 35-second model limit to return its own error before the client stops waiting.
+const REVIEW_WAIT_MS = 45_000;
+
+function AnswerEvidenceReview({ response, consent, pageActive, byId, citationOpen }: {
   citationOpen?: CitationOpenContext;
   response: AskResponse;
   consent: boolean;
+  pageActive: boolean;
   byId: ReadonlyMap<string, Citation>;
 }) {
   const [review, setReview] = useState<AskEvidenceReview | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
+  const [target, setTarget] = useState<AskResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const hintId = useId();
   const active = useRef<AbortController | null>(null);
-  useEffect(() => () => active.current?.abort(), []);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const busyRef = useRef<HTMLParagraphElement>(null);
+  const resultRef = useRef<HTMLElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const eligible = pageActive && consent && response.answer.answer.trim() !== '' && response.answer.citations.length > 0;
+  const confirmOpen = eligible && target === response;
+
+  useEffect(() => () => {
+    const request = active.current;
+    active.current = null;
+    request?.abort();
+  }, [response, eligible]);
+
+  useEffect(() => {
+    if (target !== null && !confirmOpen) {
+      setTarget(null);
+      setLoading(false);
+    }
+  }, [target, confirmOpen]);
+
+  useEffect(() => {
+    if (loading) busyRef.current?.focus();
+    else if (review !== null) resultRef.current?.focus();
+    else if (error !== null) errorRef.current?.focus();
+  }, [loading, review, error]);
+
+  function openConfirmation() {
+    if (!eligible || active.current !== null) return;
+    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setTarget(response);
+  }
+
+  function cancelConfirmation() {
+    if (active.current !== null) return;
+    const trigger = returnFocus.current;
+    returnFocus.current = null;
+    setTarget(null);
+    // A backdrop pointer-down can move focus after Modal's cleanup.
+    requestAnimationFrame(() => {
+      if (returnFocus.current === null && trigger?.isConnected) trigger.focus();
+    });
+  }
 
   async function submit() {
-    if (!consent || active.current !== null) return;
+    if (!confirmOpen || active.current !== null) return;
     const ac = new AbortController();
     active.current = ac;
     setLoading(true);
     setError(null);
+    const timeout = window.setTimeout(() => ac.abort(), REVIEW_WAIT_MS);
     try {
       const result = await apiPost<AskEvidenceReview>(
         `/api/v1/ask-records/${encodeURIComponent(response.runId)}/review`,
         { answer: response.answer.answer, consentConfirmed: true }, ac.signal,
       );
-      if (!ac.signal.aborted) setReview(result);
+      if (active.current === ac && !ac.signal.aborted) setReview(result);
     } catch (err) {
-      if (!ac.signal.aborted && !isAbort(err)) setError(toApiError(err));
+      if (active.current !== ac) return;
+      if (ac.signal.aborted) {
+        setError(new ApiError({ error: {
+          code: 'upstream_unavailable', title: '等待复核结果超时', message: '暂时未收到复核结果。',
+          retryable: true, requestId: '-',
+        } }));
+      } else if (err instanceof TypeError) {
+        // Fetch can receive the response headers before the connection drops while reading the body.
+        setError(new ApiError({ error: {
+          code: 'upstream_unavailable', title: '复核连接中断', message: '未能完整接收复核结果。',
+          retryable: true, requestId: '-',
+        } }));
+      } else if (!isAbort(err)) {
+        setError(toApiError(err));
+      }
     } finally {
-      active.current = null;
-      if (!ac.signal.aborted) setLoading(false);
+      window.clearTimeout(timeout);
+      if (active.current === ac) {
+        active.current = null;
+        setLoading(false);
+        setTarget(null);
+      }
     }
   }
 
   return (
     <div className="answer-review">
-      {review === null ? (
+      {review === null && error === null && (
         <div className="answer-review-action">
-          <button type="button" className="link-btn" onClick={() => void submit()} disabled={loading || !consent}
-            aria-describedby={hintId} title={consent ? undefined : '请先确认云端处理授权'}>
-            {loading ? '正在复核依据…' : '复核依据'}
-          </button>
-          <span className="answer-review-hint" id={hintId}>点击后，DeepSeek 会对照原文检查引用是否支持回答，另计 Token 用量和费用。</span>
+          <button type="button" className="link-btn" onClick={openConfirmation} disabled={loading || !eligible}
+            aria-haspopup="dialog" aria-describedby={hintId}>复核依据</button>
+          <span className="answer-review-hint" id={hintId}>{consent ? '查看范围并确认后开始复核。' : '请先确认云端处理授权。'}</span>
         </div>
-      ) : (
-        <section aria-label="模型复核结果">
+      )}
+      <ConfirmDialog open={confirmOpen} title="确认复核依据" cancelLabel="取消" confirmLabel="确认复核"
+        busyLabel="正在复核…" busy={loading} danger={false} onCancel={cancelConfirmation} onConfirm={() => void submit()}>
+        <p><strong>本轮问题</strong> {response.question}</p>
+        <p>本轮有 {response.answer.citations.length} 条候选引用。仅复核当前有权限且仍可读取的依据。</p>
+        <p>问题、回答和可读取的证据将发送给已配置的 DeepSeek 模型。本次操作单独计量 Token，可能产生费用。原回答和资料保持原样。</p>
+        {loading && <p ref={busyRef} role="status" tabIndex={-1}
+          onKeyDown={(event) => { if (event.key === 'Tab') event.preventDefault(); }}>
+          正在复核。此时离开页面，仍可能产生用量。
+        </p>}
+      </ConfirmDialog>
+      {review !== null && (
+        <section ref={resultRef} tabIndex={-1} aria-label="模型复核结果">
           <p className="ask-review-heading"><strong>模型复核</strong>
             <span>{review.costUsd === null ? '费用未记录' : `费用估算 ${formatCnyFromUsd(review.costUsd)}`}</span>
           </p>
@@ -173,7 +251,13 @@ function AnswerEvidenceReview({ response, consent, byId, citationOpen }: {
           </ul>
         </section>
       )}
-      {error !== null && <ErrorNotice error={error} />}
+      {error !== null && <div ref={errorRef} tabIndex={-1} role="alert">
+        <ErrorNotice error={error} {...(eligible ? { onRetry: openConfirmation } : {})} />
+        {error.body.error.code === 'upstream_unavailable' && (
+          <p>复核请求可能已发出并产生用量。请先核对用量记录，需要时再确认重试。</p>
+        )}
+        {error.body.error.code === 'not_found' && <p>请重新打开可用的回答及引用，再决定是否复核。</p>}
+      </div>}
     </div>
   );
 }
