@@ -119,6 +119,22 @@ models.streamSimple = (model, context) => {
 const api = createApp({ db, config, schemaVersion: migration.toVersion, startedAt: Date.now(), models });
 const server = serve({ fetch: api.fetch, hostname: '127.0.0.1', port: apiPort });
 
+const readabilityKeyword = '热台漂移';
+const readabilityTitles = ['恒温台光学测量手册', '热台复测与记录规程'];
+const readabilityBody = [
+  '着手测量前，先让恒温台和探测器充分平衡。完成外观检查后记录温度、湿度和设备编号。数据由两人分别复核，再与空白对照和标准件的读数比较。',
+  '热台漂移待稳定后再记录，不要用单次读数替代趋势。采集基线和复测读数后，核对储存时间、探头位置与参考光源。发现热台漂移持续扩大时，保存原始数据和完整日志，按规程重新校准。',
+  '校准完成后再次检查位置偏移与光强，记录仪器状态及观察值。采用相同条件完成三轮对照，记下未测项目及原因，保留与本次记录关联的原始结果。图表应标明标准件的批次、测量范围和环境条件。',
+].join('');
+for (const [index, title] of readabilityTitles.entries()) {
+  const id = `readability-doc-${index}`;
+  insertDocument.run(id, index === 0 ? 'sop' : 'paper', title, 'ready', id, now.toISOString(), INDEX_VERSION);
+  for (const page of index === 0 ? [1, 2] : [1]) {
+    const text = `步骤 ${page}。 ${readabilityBody}`;
+    insertChunk.run(`${id}-${page}`, id, page - 1, text, segmentForIndex(text), page,
+      JSON.stringify(['质量控制', '光学校准']), text.length);
+  }
+}
 const calls = [];
 const requestPath = (request) => new URL(request.url()).pathname;
 const isBodySearch = (response) => requestPath(response) === '/api/v1/search' && response.ok();
@@ -153,6 +169,112 @@ async function runSearch(page, query, extra) {
   const response = page.waitForResponse(isBodySearch);
   await page.goto(queryUrl(query, extra));
   return (await response).json();
+}
+
+async function verifyReadability(browser) {
+  const apiCalls = () => calls.filter(({ pathname }) => pathname.startsWith('/api/')).length;
+  const region = (page) => bodyPanel(page);
+  const card = (page, title) => region(page).getByRole('listitem').filter({
+    has: page.getByRole('heading', { name: title, exact: true, level: 3 }),
+  });
+  const toggle = (result, expanded = false) => result.getByRole('button', {
+    name: expanded ? '收起' : '展开全文', exact: true, expanded,
+  });
+  const controlledExcerpt = async (button) => {
+    const id = await button.getAttribute('aria-controls');
+    assert(id, 'Excerpt button identifies the text it controls');
+    return button.page().locator(`[id=${JSON.stringify(id)}]`);
+  };
+
+  for (const { theme, width, height } of [
+    { theme: 'light', width: 1450, height: 940 },
+    { theme: 'dark', width: 1450, height: 940 },
+    { theme: 'light', width: 360, height: 820 },
+  ]) {
+    const page = await makePage(browser, { width, height }, session().token);
+    await page.addInitScript((value) => localStorage.setItem('knowpilot.theme.v1', value), theme);
+    const result = await runSearch(page, readabilityKeyword);
+    const [primaryTitle, secondaryTitle] = readabilityTitles;
+    const [first, second] = readabilityTitles.map((title) => card(page, title));
+    const firstHit = result.hits.find((hit) => hit.documentTitle === primaryTitle);
+    assert(firstHit, 'The real search endpoint returned the long synthetic excerpt');
+    await first.getByText(`第 ${firstHit.page} 页 · 质量控制 > 光学校准`, { exact: true }).waitFor();
+    await second.getByRole('heading', { name: secondaryTitle, exact: true }).waitFor();
+    assert.equal(await first.locator('h3').count(), 1);
+    const expandFirst = toggle(first);
+    const excerpt = await controlledExcerpt(expandFirst);
+    const collapsed = await excerpt.textContent();
+    assert(firstHit.excerpt.startsWith(collapsed.slice(0, -1)));
+    assert.equal(collapsed.at(-1), '…');
+    assert(collapsed.length < firstHit.excerpt.length);
+    const marked = await excerpt.locator('mark').allTextContents();
+    assert(marked.length > 0 && marked.every((hit) => hit === readabilityKeyword));
+    assert.equal(await page.locator('html').getAttribute('data-theme'), theme);
+    const contrast = await first.evaluate((element) => {
+      const linear = (value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      const luminance = (color) => color.match(/\d+/g).slice(0, 3)
+        .map((value) => linear(Number(value) / 255))
+        .reduce((sum, value, index) => sum + [0.2126, 0.7152, 0.0722][index] * value, 0);
+      return ['h3 a', '.search-material-label', '.search-passage-location', '.search-excerpt',
+        '.search-excerpt mark', '.search-excerpt-toggle', '.search-result-actions a'].map((selector) => {
+        const item = element.querySelector(selector);
+        const ink = luminance(getComputedStyle(item).color);
+        let surface = item;
+        while (getComputedStyle(surface).backgroundColor === 'rgba(0, 0, 0, 0)') surface = surface.parentElement;
+        const paper = luminance(getComputedStyle(surface).backgroundColor);
+        return { selector, ratio: (Math.max(ink, paper) + 0.05) / (Math.min(ink, paper) + 0.05) };
+      });
+    });
+    assert(contrast.every(({ ratio }) => ratio >= 4.5), JSON.stringify(contrast));
+    console.log(`UX-02 ${theme} ${width}px minimum contrast: ${Math.min(...contrast.map(({ ratio }) => ratio)).toFixed(2)}:1`);
+    assert.equal(await excerpt.evaluate((element) => getComputedStyle(element).fontWeight), '400');
+    assert.equal(await excerpt.locator('mark').first().evaluate((element) => getComputedStyle(element).fontWeight), '600');
+    await assertNoHorizontalOverflow(page);
+    const label = width < 500 ? 'narrow' : theme;
+    if (label === 'narrow') await first.evaluate((result) => result.scrollIntoView({ block: 'center' }));
+    await page.screenshot({ path: join(output, `ux02-${label}.png`) });
+
+    const requestsBefore = apiCalls();
+    await expandFirst.focus();
+    await page.keyboard.press('Space');
+    const collapseFirst = toggle(first, true);
+    assert(await collapseFirst.evaluate((button) => button === document.activeElement && button.matches(':focus-visible')));
+    assert.equal(await excerpt.textContent(), firstHit.excerpt);
+    assert.deepEqual(await excerpt.locator('mark').allTextContents(),
+      firstHit.segments.filter(({ hit }) => hit).map(({ text }) => text));
+    assert(await toggle(second).isVisible());
+    await toggle(second).click();
+    assert(await toggle(first, true).isVisible());
+    await collapseFirst.click();
+    assert.equal(await excerpt.textContent(), collapsed);
+    assert(await toggle(first).evaluate((button) => button === document.activeElement));
+    assert(await toggle(second, true).isVisible());
+    assert.equal(apiCalls(), requestsBefore, 'Expanding or collapsing a snippet does not request more data');
+    await assertNoHorizontalOverflow(page);
+
+    if (label === 'light') {
+      await first.getByText('展开其余 1 个命中片段', { exact: true }).click();
+      const remaining = first.getByRole('listitem').filter({
+        has: page.getByRole('link', { name: '预览命中片段 2', exact: true }),
+      });
+      const other = await controlledExcerpt(toggle(remaining));
+      await toggle(remaining).click();
+      const nextHit = result.hits.filter(({ documentTitle }) => documentTitle === primaryTitle)[1];
+      assert.equal(await other.textContent(), nextHit.excerpt);
+      assert.equal(apiCalls(), requestsBefore);
+      await remaining.getByRole('link', { name: '预览命中片段 2', exact: true }).click();
+      const viewer = page.getByRole('complementary', { name: readerName });
+      await viewer.getByRole('heading', { name: primaryTitle }).waitFor();
+      await viewer.getByText(/质量控制.*光学校准/u).waitFor();
+      await assertNoHorizontalOverflow(page);
+      await page.screenshot({ path: join(output, 'ux02-reader.png') });
+      await page.keyboard.press('Escape');
+      await region(page).getByRole('button', { name: '按片段' }).click();
+      assert.equal(await region(page).getByRole('button', { name: '收起', exact: true }).count(), 0);
+    }
+    await page.close();
+  }
+  console.log('PASS UX-02 readable light/dark/narrow cards, true highlights, independent keyboard toggles and source preview');
 }
 
 let vite;
@@ -1136,6 +1258,7 @@ try {
   assert.equal((await reviewPage.request.get(origin + downloadHref)).status(), 404);
   await reviewPage.close();
   console.log('PASS original review document is version-pinned and fails closed on access after reindex');
+  await verifyReadability(browser);
   assert.deepEqual(pageErrors, []);
   console.log('PASS lifecycle reviewer compares provenance and changes, explicitly merges, and publishes the reviewed index');
   console.log('PASS research-note save/edit/selection, run-qualified citations, private search prefill and scoped history, dataset reauthorization, withdrawal and no automatic model call');

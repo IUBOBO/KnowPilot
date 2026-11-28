@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   MATERIAL_LABELS, SEARCH_MAX_LIMIT, formatSectionPath,
   type DocumentRetrievalHit, type EvidenceOpenRequest, type OpenEvidence,
 } from '@knowpilot/shared';
 import { openEvidenceLink } from '../../components/evidence/EvidenceViewer.tsx';
-import { groupPassagesByDocument, pageSearchSample } from './search-results.ts';
+import { groupPassagesByDocument, pageSearchSample, previewPassage } from './search-results.ts';
 
 export function passageRequest({ documentId, chunkId, sourceVersion }: DocumentRetrievalHit): EvidenceOpenRequest {
   return { version: 1, locator: { kind: 'document', documentId, chunkId, sourceVersion } };
@@ -21,12 +21,23 @@ function PassageLink({ hit, onOpen, children }: {
 }
 
 function PassageExcerpt({ hit }: { hit: DocumentRetrievalHit }) {
+  const excerptId = useId();
+  const [expanded, setExpanded] = useState(false);
+  const preview = useMemo(() => previewPassage(hit.segments), [hit.segments]);
+  const canExpand = preview !== hit.segments;
   const section = formatSectionPath(hit.sectionPath);
   const location = [hit.page === null ? '' : `第 ${hit.page} 页`, section].filter(Boolean).join(' · ');
   return <>
     {location && <p className="search-passage-location">{location}</p>}
-    <p className="search-excerpt">{hit.segments.map((segment, index) => segment.hit
-      ? <mark key={index}>{segment.text}</mark> : segment.text)}</p>
+    <p className="search-excerpt" id={excerptId}>
+      {(expanded ? hit.segments : preview).map((segment, index) => segment.hit
+        ? <mark key={index}>{segment.text}</mark> : segment.text)}
+      {!expanded && canExpand && '…'}
+    </p>
+    {canExpand && <button type="button" className="link-btn search-excerpt-toggle"
+      aria-controls={excerptId} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+      {expanded ? '收起' : '展开全文'}
+    </button>}
   </>;
 }
 
@@ -74,14 +85,14 @@ export function SearchDocuments({ passages, selected, onToggle, onOpen, scopedSe
     {passages.length === 0 ? <p role="status" className="search-empty">未找到匹配的文档片段。</p> : <>
       <ul className="search-result-list">
         {rows.map(([hit, ...remaining]) => hit === undefined ? null : <li
-          key={view === 'documents' ? hit.documentId : hit.chunkId} className="search-result-row">
+          key={view === 'documents' ? `doc:${hit.documentId}` : `chunk:${hit.chunkId}`} className="search-result-row">
           <DocumentCheckbox id={hit.documentId} title={hit.documentTitle} selected={selected} onToggle={onToggle} />
           <div className="search-result-body">
             <div className="search-result-title">
               <h3><PassageLink hit={hit} onOpen={onOpen}>{hit.documentTitle}</PassageLink></h3>
               <span className="search-material-label">{MATERIAL_LABELS[hit.material]}</span>
             </div>
-            <PassageExcerpt hit={hit} />
+            <PassageExcerpt key={JSON.stringify([hit.chunkId, hit.sourceVersion])} hit={hit} />
             <div className="search-result-actions">
               <PassageLink hit={hit} onOpen={onOpen}>预览命中原文</PassageLink>
               {scopedSearch !== undefined && <Link to={scopedSearch(hit.documentId)} state={scopeState}>仅检索此资料</Link>}
@@ -90,7 +101,7 @@ export function SearchDocuments({ passages, selected, onToggle, onOpen, scopedSe
               <summary>展开其余 {remaining.length} 个命中片段</summary>
               <ol>
                 {remaining.map((passage, index) => <li key={passage.chunkId}>
-                  <PassageExcerpt hit={passage} />
+                  <PassageExcerpt key={passage.sourceVersion} hit={passage} />
                   <PassageLink hit={passage} onOpen={onOpen}>{`预览命中片段 ${index + 2}`}</PassageLink>
                 </li>)}
               </ol>
