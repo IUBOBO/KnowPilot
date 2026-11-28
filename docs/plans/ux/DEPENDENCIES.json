@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "baseline": "97e9cbef279415f7f62f85f221f10c11d10e5305",
+  "release_scope": "outside_approved_v2.0.0_pending_user_decision",
+  "parallel_groups": [
+    [
+      "UX-01.implement",
+      "UX-02.implement"
+    ]
+  ],
+  "nodes": [
+    {
+      "id": "planning.approved",
+      "kind": "human_plan_review",
+      "description": "人工确认 UX 规划"
+    },
+    {
+      "id": "UX-01.implement",
+      "task": "UX-01",
+      "issue": 43,
+      "plan": "UX-01.md",
+      "branch": "codex/ux-01-review-confirmation",
+      "kind": "implementation",
+      "description": "独立工作树与功能 PR"
+    },
+    {
+      "id": "UX-01.accepted",
+      "task": "UX-01",
+      "issue": 43,
+      "plan": "UX-01.md",
+      "branch": "codex/ux-01-review-confirmation",
+      "kind": "verification",
+      "description": "独立验证并满足 Issue 与节点标准"
+    },
+    {
+      "id": "UX-01.merged",
+      "task": "UX-01",
+      "issue": 43,
+      "plan": "UX-01.md",
+      "branch": "codex/ux-01-review-confirmation",
+      "kind": "human_merge",
+      "description": "人工合并，按实际 SHA 复查"
+    },
+    {
+      "id": "UX-02.implement",
+      "task": "UX-02",
+      "issue": 44,
+      "plan": "UX-02.md",
+      "branch": "codex/ux-02-search-readability",
+      "kind": "implementation",
+      "description": "独立工作树与功能 PR"
+    },
+    {
+      "id": "UX-02.accepted",
+      "task": "UX-02",
+      "issue": 44,
+      "plan": "UX-02.md",
+      "branch": "codex/ux-02-search-readability",
+      "kind": "verification",
+      "description": "独立验证并满足 Issue 与节点标准"
+    },
+    {
+      "id": "UX-02.merged",
+      "task": "UX-02",
+      "issue": 44,
+      "plan": "UX-02.md",
+      "branch": "codex/ux-02-search-readability",
+      "kind": "human_merge",
+      "description": "人工合并，按实际 SHA 复查"
+    }
+  ],
+  "edges": [
+    {
+      "from": "planning.approved",
+      "to": "UX-01.implement"
+    },
+    {
+      "from": "UX-01.implement",
+      "to": "UX-01.accepted"
+    },
+    {
+      "from": "UX-01.accepted",
+      "to": "UX-01.merged"
+    },
+    {
+      "from": "planning.approved",
+      "to": "UX-02.implement"
+    },
+    {
+      "from": "UX-02.implement",
+      "to": "UX-02.accepted"
+    },
+    {
+      "from": "UX-02.accepted",
+      "to": "UX-02.merged"
+    }
+  ]
+}
