@@ -23,12 +23,36 @@
 }
 
 .ask-answer-title {
-  margin: 0 0 14px;
+  margin: 0 0 1rem;
 }
 
-.ask-answer-article .ask-answer-copy {
-  line-height: 1.8;
+.ask-answer-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: .95rem;
+  color: var(--ink-2);
+  font-size: var(--reading-size);
+  line-height: var(--reading-leading);
 }
+
+.ask-answer-heading {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.0625rem;
+  line-height: 1.45;
+}
+
+.ask-answer-copy > :not(:first-child).ask-answer-heading { margin-block-start: .45rem; }
+.ask-answer-copy :is(.answer-body, li, th, td) > strong {
+  color: var(--emphasis-ink);
+  font-weight: 700;
+}
+.ask-answer-list {
+  margin: 0;
+  padding-inline-start: 1.45em;
+  max-inline-size: var(--reading-measure);
+}
+.ask-answer-list li + li { margin-block-start: .4rem; }
 
 .ask-answer-copy > * {
   min-width: 0;
@@ -38,6 +62,9 @@
 .ask-answer-copy .ask-answer-table {
   table-layout: fixed;
 }
+
+.ask-answer-copy .ask-answer-table th { color: var(--ink-3); }
+.ask-answer-copy .ask-answer-table td { color: var(--ink-2); }
 
 .ask-answer-copy .ask-answer-code,
 .ask-answer-math-display {
@@ -64,6 +91,7 @@
 
 .ask-answer-math-display {
   padding: 10px 14px;
+  color: var(--ink);
   text-align: center;
   white-space: pre-wrap;
 }

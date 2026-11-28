@@ -3,8 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import type { AskResponse, Citation, DocumentCitation, EvidenceOpenRequest } from '@knowpilot/shared';
 import type { AnswerBlock } from '@knowpilot/shared/answer-blocks';
+import { AuthProvider } from '../src/auth.tsx';
 import { AskAnswer } from '../src/pages/ask/AskAnswer.tsx';
 import '../src/index.css';
+import '../src/a-theme.css';
 import '../src/pages/ask/ask.css';
 
 const moment = '2026-01-01T00:00:00Z';
@@ -33,7 +35,7 @@ const metric = {
   points: [{ evidenceId: 'E1', value: '95' }, { evidenceId: 'E2', value: '91' }],
 };
 const cases: { label: string; id: string; body: string; blocks?: AnswerBlock[] }[] = [
-  { label: '文档查找', id: 'document', body: '定位到合成资料。[E1]', blocks: [{ kind: 'documents', evidenceIds: ['E1'] }] },
+  { label: '文档查找', id: 'document', body: '定位到 **合成资料**。[E1]', blocks: [{ kind: 'documents', evidenceIds: ['E1'] }] },
   { label: '简单问答', id: 'simple', body: '合成旧文本仍可读取。[E1]' },
   { label: '多论文比较', id: 'compare', body: '这里有两个合成来源。[E1] [E2]', blocks: [
     { kind: 'papers', evidenceIds: ['E1', 'E2'] }, { kind: 'comparison', ...metric },
@@ -90,4 +92,4 @@ function Fixture() {
   );
 }
 
-createRoot(window.document.getElementById('root')!).render(<MemoryRouter><Fixture /></MemoryRouter>);
+createRoot(window.document.getElementById('root')!).render(<MemoryRouter><AuthProvider><Fixture /></AuthProvider></MemoryRouter>);

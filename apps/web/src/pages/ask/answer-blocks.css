@@ -6,27 +6,31 @@
 
 .answer-block {
   min-width: 0;
-  padding: 12px;
+  padding: .875rem 1rem;
   border: 1px solid var(--line);
+  border-inline-start: 3px solid var(--line-strong);
   border-radius: 10px;
   overflow-wrap: anywhere;
 }
 
-.answer-block h3 { margin: 0 0 8px; font-size: 1rem; }
+.answer-block h3 { margin: 0 0 .625rem; font-size: 1rem; color: var(--ink); }
 .answer-block p { margin: 6px 0; }
-.answer-block-context { font-size: .825rem; }
-.answer-block-marks { display: flex; gap: 8px; }
+.answer-block-context { font-size: .825rem; color: var(--ink-3); }
+.answer-block-marks { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .answer-block-list { display: grid; gap: 10px; margin: 0; padding-inline-start: 20px; }
 .answer-block-list dl { margin-block: 4px; }
 .answer-block-list dl div { display: flex; flex-wrap: wrap; gap: 8px; }
-.answer-block-list dt { font-weight: 600; }
+.answer-block-list dt { font-weight: 600; color: var(--ink-3); }
 .answer-block-list dd { margin: 0; }
 
 .answer-block-table { overflow-x: auto; }
 .answer-block-table table { width: 100%; }
 .answer-block-table th,
 .answer-block-table td { padding: 6px 8px; text-align: start; }
+.answer-block-table th { color: var(--ink-3); background: var(--surface-2); }
+.answer-block-table td { border-block-start: 1px solid var(--line); }
+.answer-block-chart li > span:last-child { color: var(--emphasis-ink); font-variant-numeric: tabular-nums; }
 
 .answer-block-chart { display: grid; list-style: none; padding: 0; gap: 8px; }
 .answer-block-chart li {

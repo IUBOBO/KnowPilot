@@ -64,8 +64,8 @@ export function DraftEditor({ entry, onSaved }: { entry: KnowledgeEntry; onSaved
     setEditing(true);
   }}>编辑草稿</button>;
 
-  return <form onSubmit={(event) => { event.preventDefault(); void save(); }}>
-    <label className="field">知识类型
+  return <form className="kb-draft-editor" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    <label className="field"><span>知识类型</span>
       <select value={kind} onChange={(event) => {
         const value = KNOWLEDGE_KINDS.find((option) => option === event.target.value);
         if (value !== undefined) setKind(value);
@@ -73,7 +73,7 @@ export function DraftEditor({ entry, onSaved }: { entry: KnowledgeEntry; onSaved
         {KNOWLEDGE_KINDS.map((option) => <option key={option} value={option}>{KNOWLEDGE_KIND_LABELS[option]}</option>)}
       </select>
     </label>
-    <label className="field">草稿正文
+    <label className="field"><span>草稿正文</span>
       <textarea value={content} onChange={(event) => setContent(event.target.value)} maxLength={KNOWLEDGE_MAX_INPUT_CHARS}
         rows={4} required readOnly={busy} />
     </label>

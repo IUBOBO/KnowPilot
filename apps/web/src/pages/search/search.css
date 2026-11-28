@@ -64,12 +64,12 @@ input.search-select-document { width: 1rem; height: 1rem; margin: .25rem .5rem 0
 }
 .search-passage-location { margin: .45rem 0 0; color: var(--ink-3); font-size: .8125rem; }
 .search-excerpt {
-  max-inline-size: 76ch;
+  max-inline-size: var(--reading-measure);
   margin: .45rem 0 .65rem;
   color: var(--ink-2);
-  font-size: .9375rem;
+  font-size: var(--reading-size);
   font-weight: 400;
-  line-height: 1.8;
+  line-height: var(--reading-leading);
   white-space: pre-wrap;
 }
 .search-excerpt mark {
@@ -77,10 +77,6 @@ input.search-select-document { width: 1rem; height: 1rem; margin: .25rem .5rem 0
   color: var(--mark-ink);
   border-radius: .18rem;
   font-weight: 600;
-}
-[data-theme="dark"] .search-excerpt mark {
-  background: #e9cc87;
-  color: #382707;
 }
 .search-result-actions, .search-more-passages, button.search-excerpt-toggle { font-size: .8125rem; }
 button.search-excerpt-toggle {

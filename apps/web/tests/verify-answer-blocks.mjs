@@ -19,10 +19,33 @@ try {
   const executablePath = process.env.KP_UI_BROWSER;
   browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
   const page = await browser.newPage({ viewport: { width: 1024, height: 860 } });
+  await page.route('**/api/v1/auth/me', (route) => route.fulfill({ status: 401, json: {} }));
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('http://127.0.0.1:4390/tests/answer-block-fixture.html');
   await page.getByRole('heading', { name: '相关文档' }).waitFor();
+  const prose = page.locator('.ask-answer-copy .answer-body');
+  const style = await prose.evaluate((element) => {
+    const root = document.documentElement;
+    const themes = ['light', 'dark'].map((theme) => {
+      root.dataset.theme = theme;
+      const body = getComputedStyle(element);
+      const strong = getComputedStyle(element.querySelector('strong'));
+      const citation = getComputedStyle(element.querySelector('.cite-mark'));
+      return { body: body.color, strong: strong.color, citation: citation.color,
+        size: parseFloat(body.fontSize), leading: parseFloat(body.lineHeight),
+        weight: Number(strong.fontWeight), bodyWeight: Number(body.fontWeight) };
+    });
+    root.dataset.theme = 'light';
+    return themes;
+  });
+  assert.notEqual(style[0].body, style[1].body);
+  for (const theme of style) {
+    assert(theme.size >= 15 && theme.size <= 16 && theme.leading >= 1.75 * theme.size);
+    assert.notEqual(theme.body, theme.strong);
+    assert.notEqual(theme.body, theme.citation);
+    assert(theme.weight > theme.bodyWeight);
+  }
   const section = (name) => page.locator('section').filter({ has: page.getByRole('heading', { name, exact: true }) });
   await section('相关文档').getByRole('link', { name: '来源 1：合成论文甲' }).click();
   const received = page.getByLabel('模拟阅读器请求');

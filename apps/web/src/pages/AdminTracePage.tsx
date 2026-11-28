@@ -775,10 +775,10 @@ function BudgetRow({
   const ratio = limit <= 0 ? 0 : Math.min(100, Math.round((used / limit) * 100));
   return (
     <tr>
-      <td>{label}</td>
+      <th scope="row">{label}</th>
       <td className="mono">{fmt(limit)}</td>
-      <td className="mono">{fmt(used)}</td>
-      <td className="mono">{ratio}%</td>
+      <td className="mono table-number">{fmt(used)}</td>
+      <td className="mono table-number">{ratio}%</td>
     </tr>
   );
 }
