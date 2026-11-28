@@ -411,6 +411,9 @@ try {
     assert(await reviewCancel.isDisabled());
     await desktop.keyboard.press('Escape');
     await reviewDialog.locator('..').click({ position: { x: 5, y: 5 } });
+    await focusIs(busy);
+    await desktop.keyboard.press('Shift+Tab');
+    await focusIs(busy);
     await visible(reviewDialog);
     await desktop.screenshot({ path: resolve(outputs, 'review-busy-desktop.png'), animations: 'disabled' });
     assert.equal(reviewCalls().length, 1);
@@ -643,6 +646,28 @@ try {
   await mobileReviewButton.click();
   await confirmMobileReview();
   await visible(narrowArticle.getByRole('alert').getByText('模型未返回可核对的复核结果。'));
+
+  await showReviewAnswer('review-disconnected');
+  reviewReply = { status: 200, body: successfulReview };
+  await mobile.evaluate(() => {
+    const text = Response.prototype.text;
+    Response.prototype.text = function () {
+      // Chrome rejects the read with TypeError when the connection drops after headers.
+      return this.url.endsWith('/review-disconnected/review')
+        ? Promise.reject(new TypeError('Could not read response body'))
+        : text.call(this);
+    };
+  });
+  const interruptedReview = mobile.waitForResponse((r) => r.url().endsWith('/review-disconnected/review'));
+  await mobileReviewButton.click();
+  await confirmMobileReview();
+  assert.equal((await interruptedReview).status(), 200);
+  const disconnected = narrowArticle.getByRole('alert');
+  await visible(disconnected.getByText('复核连接中断'));
+  await visible(disconnected.getByText(/可能已发出并产生用量/u));
+  await disconnected.getByRole('button', { name: '重试' }).click();
+  await visible(mobileReview);
+  await mobileReview.getByRole('button', { name: '取消' }).click();
 
   await showReviewAnswer('review-timeout', {
     citations: [citation, { ...citation, id: 'E2', chunkId: 'fixture-missing' }],

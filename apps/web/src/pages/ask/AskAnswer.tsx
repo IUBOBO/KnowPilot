@@ -187,6 +187,12 @@ function AnswerEvidenceReview({ response, consent, pageActive, byId, citationOpe
           code: 'upstream_unavailable', title: '等待复核结果超时', message: '暂时未收到复核结果。',
           retryable: true, requestId: '-',
         } }));
+      } else if (err instanceof TypeError) {
+        // Fetch can receive the response headers before the connection drops while reading the body.
+        setError(new ApiError({ error: {
+          code: 'upstream_unavailable', title: '复核连接中断', message: '未能完整接收复核结果。',
+          retryable: true, requestId: '-',
+        } }));
       } else if (!isAbort(err)) {
         setError(toApiError(err));
       }

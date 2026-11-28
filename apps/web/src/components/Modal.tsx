@@ -133,7 +133,10 @@ export function Modal({
     <div
       className={variant === 'drawer' ? 'dialog-backdrop drawer-backdrop' : 'dialog-backdrop'}
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target !== event.currentTarget) return;
+        // A busy dialog can decline to close and must keep its current focus.
+        event.preventDefault();
+        onClose();
       }}
     >
       <div
