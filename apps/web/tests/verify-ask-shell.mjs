@@ -104,6 +104,13 @@ function json(response, payload, status = 200) {
 const activity = new EventEmitter();
 const calls = [];
 let revoked = 0;
+const successfulReview = {
+  claims: [{ statement: '对照条件已核对', verdict: 'supported', reason: '模拟复核依据', evidence: [{ citationId: 'E1', quote: citation.quote }] }],
+  costUsd: null, unavailableSourceCount: 0,
+};
+let reviewReply = { status: 200, body: successfulReview };
+let reviewGate;
+let signedIn = true;
 const server = createServer(async (request, response) => {
   const { pathname, searchParams } = new URL(request.url, mockOrigin);
   const parts = [];
@@ -112,10 +119,12 @@ const server = createServer(async (request, response) => {
   const call = { pathname, method: request.method, posted, cache: request.headers['cache-control'] };
   calls.push(call);
 
-  if (pathname === '/api/v1/auth/me') return json(response, {
-    user: { id: 'fixture-user', username: 'fixture-user', displayName: '合成测试成员', role: 'member', groupId: null },
-    permissions: ['knowledge.read', 'agent.ask', 'submission.read.all'],
-  });
+  if (pathname === '/api/v1/auth/me') return signedIn
+    ? json(response, {
+        user: { id: 'fixture-user', username: 'fixture-user', displayName: '合成测试成员', role: 'member', groupId: null },
+        permissions: ['knowledge.read', 'agent.ask', 'submission.read.all'],
+      })
+    : json(response, reviewReply.body, 401);
   if (pathname === '/api/v1/documents') return json(response, { items: [], hasMore: false });
   if (pathname === '/api/v1/submissions') return json(response, { items: [] });
   if (pathname === '/api/v1/chunks/fixture-chunk') {
@@ -135,10 +144,14 @@ const server = createServer(async (request, response) => {
     diagnostics: [],
   });
   if (pathname === '/api/v1/code-assets/fixture-dataset/evidence') return json(response, dataset);
-  if (pathname.endsWith('/review')) return json(response, {
-    claims: [{ statement: '对照条件已核对', verdict: 'supported', reason: '模拟复核依据', evidence: [{ citationId: 'E1', quote: citation.quote }] }],
-    costUsd: null, unavailableSourceCount: 0,
-  });
+  if (pathname.endsWith('/review')) {
+    const { status, body } = reviewReply;
+    if (status === 401) signedIn = false;
+    activity.emit('review', call);
+    await reviewGate;
+    if (!response.destroyed) json(response, body, status);
+    return;
+  }
   if (pathname.endsWith('/feedback')) return json(response, { feedback: {
     ...posted, runId: pathname.split('/').at(-2), userId: 'fixture-user', reasons: posted.reasons ?? [],
     note: posted.note ?? null, createdAt: now, updatedAt: now,
@@ -163,6 +176,20 @@ const server = createServer(async (request, response) => {
 
 async function visible(locator) {
   await locator.waitFor({ state: 'visible' });
+}
+
+function reviewCalls() {
+  return calls.filter(({ pathname }) => pathname.endsWith('/review'));
+}
+
+function waitForReview() {
+  return once(activity, 'review', { signal: AbortSignal.timeout(8000) }).then(([call]) => call);
+}
+
+function holdReview() {
+  let release;
+  reviewGate = new Promise((done) => { release = done; });
+  return () => { release(); reviewGate = undefined; };
 }
 
 function waitForStream() {
@@ -343,10 +370,56 @@ try {
   await visible(article.getByRole('heading', { name: '仪器读数与误差' }));
   await desktop.locator('summary').filter({ hasText: /查询过程/u }).click();
   await visible(desktop.getByText(/候选 1/u).first());
-  await article.getByRole('button', { name: '复核依据' }).click();
-  await visible(article.getByRole('region', { name: '模型复核结果' }).getByText('原文支持'));
-  assert(calls.some((call) => call.pathname.endsWith('/fixture-report/review') && call.posted.answer === report &&
-    call.posted.consentConfirmed === true));
+  const reviewEntry = article.getByRole('button', { name: '复核依据', exact: true });
+  const reviewDialog = desktop.getByRole('dialog', { name: '确认复核依据' });
+  const reviewCancel = reviewDialog.getByRole('button', { name: '取消' });
+  const reviewConfirm = reviewDialog.getByRole('button', { name: '确认复核', exact: true });
+  await reviewEntry.click();
+  await focusIs(reviewCancel);
+  await visible(reviewDialog.getByText(questions.report, { exact: false }));
+  await visible(reviewDialog.getByText(/1 条候选引用。仅复核当前有权限且仍可读取的依据/u));
+  await visible(reviewDialog.getByText(/DeepSeek.*Token.*费用/u));
+  await desktop.screenshot({ path: resolve(outputs, 'review-confirm-desktop.png'), animations: 'disabled' });
+  await desktop.keyboard.press('Shift+Tab');
+  await focusIs(reviewConfirm);
+  await desktop.keyboard.press('Tab');
+  await focusIs(reviewCancel);
+  await reviewCancel.click();
+  await focusIs(reviewEntry);
+  await reviewEntry.click();
+  await desktop.keyboard.press('Escape');
+  await focusIs(reviewEntry);
+  await reviewEntry.click();
+  await reviewDialog.locator('..').click({ position: { x: 5, y: 5 } });
+  await focusIs(reviewEntry);
+  assert.equal(reviewCalls().length, 0);
+
+  await reviewEntry.click();
+  const releaseReview = holdReview();
+  try {
+    const receivedReview = waitForReview();
+    // Dispatch two clicks in one browser turn, before relying on disabled button rendering.
+    await reviewConfirm.evaluate((button) => { button.click(); button.click(); });
+    const reviewCall = await receivedReview;
+    assert.equal(reviewCall.pathname, '/api/v1/ask-records/fixture-report/review');
+    assert.deepEqual(reviewCall.posted, { answer: report, consentConfirmed: true });
+    const busy = reviewDialog.getByRole('status');
+    await focusIs(busy);
+    await desktop.keyboard.press('Tab');
+    await focusIs(busy);
+    assert(await reviewDialog.getByRole('button', { name: '正在复核…' }).isDisabled());
+    assert(await reviewCancel.isDisabled());
+    await desktop.keyboard.press('Escape');
+    await reviewDialog.locator('..').click({ position: { x: 5, y: 5 } });
+    await visible(reviewDialog);
+    await desktop.screenshot({ path: resolve(outputs, 'review-busy-desktop.png'), animations: 'disabled' });
+    assert.equal(reviewCalls().length, 1);
+  } finally {
+    releaseReview();
+  }
+  const reviewResults = article.getByRole('region', { name: '模型复核结果' });
+  await visible(reviewResults.getByText('原文支持'));
+  await focusIs(reviewResults);
   await article.getByRole('button', { name: '有帮助', exact: true }).click();
   await visible(article.getByText('已记录 · 有帮助'));
   assert(calls.some((call) => call.pathname.endsWith('/fixture-report/feedback') && call.posted.rating === 'up'));
@@ -484,11 +557,141 @@ try {
   await visible(mobile.getByRole('heading', { name: '投稿台账' }));
   await mobile.getByRole('link', { name: '知识问答', exact: true }).click();
   await visible(narrowArticle.getByRole('heading', { name: '仪器读数与误差' }));
+
+  // Exercise eligibility and recovery separately so existing history/reader scenarios keep their original fixture turns.
+  const mobileReview = mobile.getByRole('dialog', { name: '确认复核依据' });
+  const mobileReviewButton = narrowArticle.getByRole('button', { name: '复核依据', exact: true });
+  const localConsent = mobile.getByRole('checkbox', { name: '我已阅读并理解' });
+  await localConsent.uncheck();
+  assert(await mobileReviewButton.isDisabled());
+  await localConsent.check();
+  await mobileReviewButton.click();
+  await mobile.screenshot({ path: resolve(outputs, 'review-confirm-mobile.png'), animations: 'disabled' });
+  await noPageOverflow(mobile);
+  // Revocation can occur while confirmation is open, without using a pointer through the modal.
+  await localConsent.evaluate((input) => input.click());
+  await mobileReview.waitFor({ state: 'hidden' });
+  await localConsent.check();
+  await mobileReviewButton.click();
+  await mobile.getByRole('link', { name: '投稿台账' }).evaluate((link) => link.click());
+  await visible(mobile.getByRole('heading', { name: '投稿台账' }));
+  await mobileReview.waitFor({ state: 'hidden' });
+  await mobile.getByRole('link', { name: '知识问答', exact: true }).click();
+  await visible(mobileReviewButton);
+  assert.equal(await mobileReview.count(), 0);
+  assert.equal(reviewCalls().length, 1);
+
+  async function showReviewAnswer(id, { body = '模拟校准结果。[E1]', citations = [citation] } = {}) {
+    const question = '合成用例 ' + id;
+    const run = await ask(mobile, question);
+    const response = answer(id, question, body);
+    response.answer.citations = citations;
+    terminal(run, 'verified_final', response);
+    await visible(mobile.getByRole('heading', { name: question, exact: true }));
+    await visible(narrowArticle);
+  }
+
+  function reviewFailure(status, code, title, message, retryable = false) {
+    return { status, body: { error: { code, title, message, retryable, requestId: 'fixture-review' } } };
+  }
+
+  async function confirmMobileReview() {
+    const next = waitForReview();
+    await mobileReview.getByRole('button', { name: '确认复核', exact: true }).click();
+    return next;
+  }
+
+  await showReviewAnswer('review-invalid', { citations: [] });
+  assert.equal(await mobileReviewButton.count(), 0);
+  await showReviewAnswer('review-empty', { body: '  ' });
+  assert(await mobileReviewButton.isDisabled());
+  assert.equal(reviewCalls().length, 1);
+
+  await showReviewAnswer('review-switch');
+  await mobile.getByText(/问答历史/u).click();
+  await mobileReviewButton.click();
+  const releaseStaleReview = holdReview();
+  try {
+    await confirmMobileReview();
+    await mobile.getByRole('button', { name: questions.report }).evaluate((button) => button.click());
+    await mobileReview.waitFor({ state: 'hidden' });
+    await visible(narrowArticle.getByRole('heading', { name: '仪器读数与误差' }));
+  } finally {
+    releaseStaleReview();
+  }
+  assert.equal(await narrowArticle.getByRole('region', { name: '模型复核结果' }).count(), 0);
+  assert.equal(reviewCalls().length, 2);
+
+  for (const [id, status, code, title, detail] of [
+    ['review-forbidden', 403, 'permission_denied', '无权复核', '当前账号没有复核权限。'],
+    ['review-missing', 404, 'not_found', '引用不可用', '这次回答的引用目前无法回读。'],
+  ]) {
+    await showReviewAnswer(id);
+    reviewReply = reviewFailure(status, code, title, detail);
+    await mobileReviewButton.click();
+    const call = await confirmMobileReview();
+    assert(call.pathname.endsWith('/' + id + '/review'));
+    const notice = narrowArticle.getByRole('alert');
+    await focusIs(notice);
+    await visible(notice.getByText(detail));
+    assert.equal(await notice.getByRole('button', { name: '重试' }).count(), 0);
+  }
+  await mobile.screenshot({ path: resolve(outputs, 'review-unavailable-mobile.png'), animations: 'disabled' });
+
+  await showReviewAnswer('review-no-claims');
+  reviewReply = reviewFailure(503, 'upstream_unavailable', '复核结果不可用', '模型未返回可核对的复核结果。', true);
+  await mobileReviewButton.click();
+  await confirmMobileReview();
+  await visible(narrowArticle.getByRole('alert').getByText('模型未返回可核对的复核结果。'));
+
+  await showReviewAnswer('review-timeout', {
+    citations: [citation, { ...citation, id: 'E2', chunkId: 'fixture-missing' }],
+  });
+  await mobile.evaluate(() => {
+    const setTimeout = window.setTimeout;
+    // Shorten only the UX deadline, exercising the same abort and feedback path.
+    window.setTimeout = (handler, delay, ...args) => delay === 45_000
+      ? setTimeout(handler, 500, ...args) : setTimeout(handler, delay, ...args);
+  });
+  const releaseTimeout = holdReview();
+  try {
+    const cursor = reviewCalls().length;
+    await mobileReviewButton.click();
+    await confirmMobileReview();
+    const notice = narrowArticle.getByRole('alert');
+    await visible(notice.getByText('等待复核结果超时'));
+    await visible(notice.getByText(/可能已发出并产生用量/u));
+    assert.equal(reviewCalls().length, cursor + 1);
+    await mobile.screenshot({ path: resolve(outputs, 'review-timeout-mobile.png'), animations: 'disabled' });
+  } finally {
+    releaseTimeout();
+  }
+  const beforeRetry = reviewCalls().length;
+  const reviewRetry = narrowArticle.getByRole('alert').getByRole('button', { name: '重试' });
+  await reviewRetry.click();
+  await visible(mobileReview);
+  assert.equal(reviewCalls().length, beforeRetry);
+  await mobileReview.getByRole('button', { name: '取消' }).click();
+  await focusIs(reviewRetry);
+  await reviewRetry.click();
+  reviewReply = { status: 200, body: { ...successfulReview, unavailableSourceCount: 1 } };
+  await confirmMobileReview();
+  await visible(narrowArticle.getByText('有 1 个引用未纳入本次复核。'));
+  await mobile.screenshot({ path: resolve(outputs, 'review-partial-mobile.png'), animations: 'disabled' });
+  assert.equal(reviewCalls().length, beforeRetry + 1);
+
+  await showReviewAnswer('review-expired');
+  reviewReply = reviewFailure(401, 'unauthenticated', '会话已过期', '请重新登录。');
+  await mobileReviewButton.click();
+  await confirmMobileReview();
+  await mobile.waitForURL((url) => url.pathname === '/login' && url.searchParams.get('next') === '/ask');
+
   assert.deepEqual(errors, []);
   assert.deepEqual(external, []);
   assert(!calls.some((call) => call.pathname === '/synthetic-unsafe-image'));
   console.log('PASS: responsive layout, safe Markdown/MathML, streamed draft/final/error/cancel, source navigation, review, feedback, history, resume, and keyboard focus; shared body/table/block and search evidence, revocation, and archive');
-  console.log('Screenshots: desktop.png, narrow.png, narrow-reader.png, ask-evidence-reader.png, mobile-evidence-reader.png');
+  console.log('PASS: review confirmation, cancellation, request lock, context and consent changes, partial results, timeout/retry, and authorization');
+  console.log('Screenshots: desktop.png, narrow.png, narrow-reader.png, ask-evidence-reader.png, mobile-evidence-reader.png, review-*.png');
 } finally {
   await browser?.close();
   await frontend?.close();
