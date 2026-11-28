@@ -572,6 +572,7 @@ export function AskPage({ active, scope, onActivity, slots }: {
             onOpenEvidence={openEvidence}
             byId={byId}
             consent={consent}
+            reviewActive={active}
             sourceCount={sources.length}
             readerOpen={readerOpen}
             sourceButtonRef={sourceButtonRef}
